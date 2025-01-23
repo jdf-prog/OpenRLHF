@@ -165,7 +165,7 @@ def _get_reward_model(base_pretrained_model, base_llm_model, value_head_prefix="
             setattr(self, self.base_model_prefix, base_llm_model(config))
 
             self.value_head_prefix = value_head_prefix
-            setattr(self, value_head_prefix, nn.Linear(config.hidden_size, 1, bias=False))
+            setattr(self, value_head_prefix, nn.Linear(config.hidden_size, 1, bias=True)) # bias=True, modified by Dongfu for custom use
 
             self.packing_samples = packing_samples
 

@@ -14,9 +14,10 @@ ray job submit --address="http://127.0.0.1:8265" \
    --actor_num_gpus_per_node 1 \
    --vllm_num_engines 1 \
    --vllm_tensor_parallel_size 1 \
-   --pretrain OpenRLHF/Llama-3-8b-sft-mixture \
-   --reward_pretrain OpenRLHF/Llama-3-8b-rm-700k \
-   --save_path $working_dir/examples/test_scripts/checkpoint/llama3-8b-rlhf \
+   --pretrain meta-llama/Llama-3.1-8B-Instruct \
+   --reward_pretrain CodeDPO/qwen_coder_2.5_rm \
+   --value_head_prefix "summary" \
+   --save_path $working_dir/examples/test_scripts/checkpoint/llama3.1-8b-coderm-7b-reinforce++ \
    --micro_train_batch_size 16 \
    --train_batch_size 128 \
    --micro_rollout_batch_size 32 \
@@ -31,17 +32,17 @@ ray job submit --address="http://127.0.0.1:8265" \
    --bf16 \
    --actor_learning_rate 5e-7 \
    --init_kl_coef 0.01 \
-   --prompt_data OpenRLHF/prompt-collection-v0.1 \
+   --prompt_data CodeDPO/codedpo_20241208_openrlhf_format \
    --input_key context_messages \
    --apply_chat_template \
-   --normalize_reward \
    --adam_offload \
    --gradient_checkpointing \
    --packing_samples \
    --save_steps -1 \
-   --ckpt_path $working_dir/examples/test_scripts/ckpt/llama3-8b-rlhf \
+   --ckpt_path $working_dir/examples/test_scripts/ckpt/llama3.1-8b-coderm-7b-reinforce++ \
    --flash_attn \
    --colocate_actor_ref \
-   --colocate_critic_reward \
+   --use_wandb
 
+   # --normalize_reward \
 # also supports --advantage_estimator rloo
