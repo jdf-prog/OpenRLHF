@@ -12,7 +12,7 @@ ray job submit --address="http://127.0.0.1:8265" \
    --reward_num_gpus_per_node 1 \
    --actor_num_nodes 1 \
    --actor_num_gpus_per_node 4 \
-   --vllm_num_engines 2 \
+   --vllm_num_engines 1 \
    --vllm_tensor_parallel_size 1 \
    --pretrain Qwen/Qwen2.5-7B-Instruct \
    --reward_pretrain CodeDPO/qwen_coder_2.5_rm_openrlhf \
@@ -32,7 +32,7 @@ ray job submit --address="http://127.0.0.1:8265" \
    --bf16 \
    --actor_learning_rate 5e-7 \
    --init_kl_coef 0.01 \
-   --prompt_data CodeDPO/codedpo_20241208_openrlhf_format \
+   --prompt_data CodeDPO/codedpo_20241208_openrlhf_format_hard \
    --input_key context_messages \
    --apply_chat_template \
    --adam_offload \
