@@ -1,6 +1,6 @@
 import argparse
 import re
-
+import json
 import torch
 import uvicorn
 import hashlib
@@ -158,6 +158,8 @@ class RuleBasedRewardModelProxy:
             hash_string(item['context_messages'][0]['content']): item for item in self.dataset
         }
         assert self.rule in ["test_case", "exact_match"]
+        if self.rule == "test_case":    
+            from .eval_test_cases import evaluate
         
     def get_reward(self, queries):
         if self.batch_size is None:
@@ -173,32 +175,37 @@ class RuleBasedRewardModelProxy:
         
         scores = []
         if self.rule == "test_case":
-            questions = [conv[0]['content'] for conv in conversations]
-            responses = [conv[1]['content'] for conv in conversations]
-            extracted_codes = ...
+            from .eval_test_cases import evaluate
+            questions = []
+            responses = []
+            for conversation in conversations:
+                idx = 0
+                while conversation[idx]['role'] != "user":
+                    idx += 1
+                questions.append(conversation[idx]['content'])
+                responses.append(conversation[idx + 1]['content'])
             question_hashes = [hash_string(question) for question in questions]
             assert all([x in self.hash_map for x in question_hashes]), "Not all questions are in the dataset"
             test_cases = [self.hash_map[x][self.gt_key] for x in question_hashes]
+            samples = [
+                {
+                    'task_id': question_hash,
+                    'prompt': question,
+                    'output': response,
+                    'tests': test_case,
+                    '_identifier': f"{question_hash}_{i}"
+                }
+                for i, (question_hash, question, response, test_case) in enumerate(zip(question_hashes, questions, responses, test_cases))
+            ]
+            # save samples to a file
+            with open("samples.jsonl", "w") as f:
+                for sample in samples:
+                    f.write(json.dumps(sample) + "\n")
+            all_samples_results, pass_rates = evaluate("samples.jsonl")
+            scores = pass_rates
+        elif self.rule == "exact_match":
+            raise NotImplementedError
 
-        
-
-        # remove pad_token
-        for i in range(len(queries)):
-            queries[i] = (
-                strip_sequence(queries[i], self.tokenizer.pad_token, self.tokenizer.eos_token)
-                + self.tokenizer.eos_token
-            )
-        logger.info(f"queries[0]: {queries[0]}")
-
-        # batch
-        with torch.no_grad():
-            for i in range(0, len(queries), batch_size):
-                inputs = self.tokenize_fn(
-                    queries[i : min(len(queries), i + batch_size)], device=self.reward_model.device
-                )
-                r = self.reward_model(inputs["input_ids"], inputs["attention_mask"])
-                r = r.tolist()
-                scores.extend(r)
         return scores
 
     def tokenize_fn(self, texts, device):
