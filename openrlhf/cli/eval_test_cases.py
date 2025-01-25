@@ -172,6 +172,7 @@ def evaluate(
     gt_time_limit_factor: float = DEFAULT_GT_TIME_LIMIT_FACTOR,
     output_file: Optional[str] = None,
     n_workers: Optional[int] = None,
+    extract_solution: bool = True,
 ):
     if not n_workers:
         n_workers = parallel or max(1, multiprocessing.cpu_count() // 2)
@@ -201,12 +202,7 @@ def evaluate(
                     all_samples = json.load(f)
         else:
             all_samples = samples
-        # get santized solution
-        for sample in all_samples:
-            entry_point = get_entry_point_from_test_case(sample['tests'][0])
-            sample["solution"] = code_extract(sample["output"].encode('utf-8', 'ignore').decode('utf-8'))    
-            if entry_point not in sample["solution"]:
-                sample["solution"] = sample['output']
+        
         dataset_hash = None
 
         results = {
@@ -222,11 +218,16 @@ def evaluate(
             eval_results = defaultdict(list)  # task_id ->
             remainings = set()
 
-            print("Reading samples...")
-            for sample in tqdm(all_samples):
+            for sample in tqdm(all_samples, desc="Submitting samples"):
                 task_id = sample["task_id"]
                 # test_inputs, expected_output = get_test_inputs_outputs_from_test_case(sample["tests"])
                 entry_point = get_entry_point_from_test_case(sample['tests'][0])
+                if extract_solution:
+                    sample["solution"] = code_extract(sample["output"].encode('utf-8', 'ignore').decode('utf-8'))    
+                    if entry_point not in sample["solution"]:
+                        sample["solution"] = sample['output']
+                else:
+                    sample["solution"] = sample['output']
                 solution = sample["solution"]
                 remainings.add(sample["_identifier"])
                 args = (
@@ -256,7 +257,7 @@ def evaluate(
                         continue
                     # Potential stucking
                     warn("No samples had finished testing in the last 20s")
-                    warn(f"{len(remainings)} samples to be tested: {remainings}")
+                    warn(f"{len(remainings)} samples to be tested...")
 
             threading.Thread(target=stucking_checker).start()
 

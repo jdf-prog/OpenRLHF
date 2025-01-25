@@ -155,6 +155,7 @@ class RuleBasedRewardModelProxy:
         self.dataset = datasets.load_dataset(args.dataset, split="train")
         self.input_key = args.input_key
         self.gt_key = args.gt_key
+        self.binary = args.binary
         dataset_questions = [item['context_messages'][0]['content'] for item in self.dataset]
         dataset_questions = [self.policy_tokenizer.decode(self.policy_tokenizer.encode(x)) for x in tqdm(dataset_questions, desc="Tokenizing dataset questions")]
         self.hash_map = {
@@ -210,8 +211,10 @@ class RuleBasedRewardModelProxy:
             with open("samples.jsonl", "w") as f:
                 for sample in samples:
                     f.write(json.dumps(sample) + "\n")
-            all_samples_results, pass_rates = evaluate("samples.jsonl", n_workers=16)
+            all_samples_results, pass_rates = evaluate("samples.jsonl", n_workers=16, test_details=False)
             scores = pass_rates
+            if self.binary:
+                scores = [1 if x == 1 else 0 for x in scores] # if binary
         elif self.rule == "exact_match":
             raise NotImplementedError
 
@@ -240,6 +243,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset", type=str, default="test", help="Dataset for the rule-based reward model")
     parser.add_argument("--input_key", type=str, default="context_messages", help="Key for the input")
     parser.add_argument("--gt_key", type=str, default="tests", help="Key used for rule-based reward model that compares with the output to get the reward")
+    parser.add_argument("--binary", action="store_true", default=False, help="Binary reward")
 
     parser.add_argument("--port", type=int, default=5000, help="Port number for the server")
     parser.add_argument("--host", type=str, default="0.0.0.0", help="IP for the server")

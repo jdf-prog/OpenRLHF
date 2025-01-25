@@ -8,7 +8,7 @@ dataset="CodeDPO/codedpo_20241208_openrlhf_format_hard"
 rm_port=14236
 remote_rm_url="rule:http://localhost:$rm_port/get_reward"
 # save_name="qwen25-ins-7b-coderm-7b-reinforce++"
-save_name="qwen25-ins-7b-testcaserm-7b-reinforce++-debug"
+save_name="qwen25-ins-7b-testcaserm-7b-reinforce++-binary"
 reward_log_file="logs/reward.log"
 mkdir -p logs
 python -m openrlhf.cli.serve_rm \
@@ -16,6 +16,7 @@ python -m openrlhf.cli.serve_rm \
    --port $rm_port \
    --bf16 \
    --flash_attn \
+   --binary \
    --normalize_reward \
    --max_len 8192 \
    --batch_size 16 \
