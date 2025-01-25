@@ -152,3 +152,5 @@ core
 
 /test*
 /*.jsonl
+/data
+/wandb
