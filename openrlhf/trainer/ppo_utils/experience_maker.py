@@ -188,6 +188,20 @@ class NaiveExperienceMaker(ABC):
             disable=not self.strategy.is_rank_0(),
         ):
             experiences.append(self.make_experience(samples).to_device("cpu"))
+        if self.remote_rm_url is not None and not self.remote_rm_url.startswith("rule:"):
+            # get rewards all together
+            all_sequences = torch.cat([experience.sequences for experience in experiences])
+            # remote RM
+            queries = self.tokenizer.batch_decode(all_sequences.cpu(), skip_special_tokens=False)
+            # r = remote_rm_fn(self.remote_rm_url, queries=queries).to(device=action_log_probs.device)
+            remote_rm_url = self.remote_rm_url[len("rule:"):]
+            all_rewards = remote_rm_fn(remote_rm_url, queries=queries)
+            offset = 0
+            for experience in experiences:
+                length = experience.sequences.size(0)
+                experience.info["reward"] = all_rewards[offset : offset + length]
+                offset += length
+        
 
         experiences, rewards = self.process_experiences(experiences)
 
@@ -297,8 +311,11 @@ class NaiveExperienceMaker(ABC):
         # rewards
         if self.remote_rm_url is not None:
             # remote RM
-            queries = self.tokenizer.batch_decode(sequences.cpu(), skip_special_tokens=False)
-            r = remote_rm_fn(self.remote_rm_url, queries=queries).to(device=action_log_probs.device)
+            if self.remote_rm_url.startswith("rule:"):
+                r = None
+            else:
+                queries = self.tokenizer.batch_decode(sequences.cpu(), skip_special_tokens=False)
+                r = remote_rm_fn(self.remote_rm_url, queries=queries).to(device=action_log_probs.device)
         else:
             # local RM
             r = self.reward_model(sequences, attention_mask)
@@ -472,7 +489,114 @@ class RemoteExperienceMaker(NaiveExperienceMaker):
                 "actor_value_rm_time": 0,
                 "wait_time": 0,
             }
-        experiences = super().make_experience_list(all_prompts, **generate_kwargs)
+            
+        args = self.strategy.args
+        # generate responses
+        samples_list = self.generate_samples(all_prompts, **generate_kwargs)
+        torch.distributed.barrier()
+        
+        def get_experience():
+            print("Start getting experience")
+            experiences = []
+            for samples in tqdm(
+                samples_list,
+                desc="make_experience",
+                disable=not self.strategy.is_rank_0(),
+            ):
+                experiences.append(self.make_experience(samples).to_device("cpu"))
+            print("Finish getting experience")
+            return experiences
+        
+        def get_remote_rewards():
+            print("Start getting remote rewards")
+            if self.packing_samples:
+                all_sequences = []
+                for samples in samples_list:
+                    sequences = unpacking_samples(samples.sequences, samples.packed_seq_lens)
+                    all_sequences.extend(sequences)
+            else:
+                # get rewards all together
+                all_sequences = sum([experience.sequences for experience in experiences], [])
+            # remote RM
+            queries = self.tokenizer.batch_decode(all_sequences, skip_special_tokens=False)
+            for i, rm in enumerate(self.remote_rm_url):
+                if not rm.startswith("rule:"):
+                    continue
+                # r = remote_rm_fn(self.remote_rm_url, queries=queries).to(device=action_log_probs.device)
+                remote_rm_url = rm[len("rule:"):]
+                all_rewards = remote_rm_fn(remote_rm_url, queries=queries)
+                remote_rewards.append(all_rewards)
+            print("Finish getting remote rewards")
+            return remote_rewards
+        
+        remote_rewards = []
+        if self.remote_rm_url is not None:
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor() as executor:
+                future_experiences = executor.submit(get_experience)
+                future_remote_rewards = executor.submit(get_remote_rewards)
+                experiences = future_experiences.result()
+                remote_rewards = future_remote_rewards.result()
+        else:
+            experiences = get_experience()
+        
+        if self.remote_rm_url is not None and remote_rewards:
+            offset = 0
+            for experience in experiences:
+                length = len(experience.sequences)
+                previous_rewards = experience.info["reward"]
+                cur_rewards = [x[offset : offset + length].to(previous_rewards.device) for x in remote_rewards]
+                experience.info["reward"] = self.reward_fn([previous_rewards] + cur_rewards)
+                offset += length
+
+        experiences, rewards = self.process_experiences(experiences)
+
+        # calculate return and advantages
+        for experience, reward in zip(experiences, rewards):
+            experience = experience.to_device("cuda")
+            reward = reward.to(device="cuda")
+            num_actions = experience.info["num_actions"]
+            reward = compute_reward(
+                reward,
+                self.kl_ctl.value,
+                experience.kl,
+                action_mask=experience.action_mask,
+                num_actions=num_actions,
+                reward_clip_range=args.reward_clip_range,
+            )
+
+            if self.advantage_estimator == "gae":
+                experience.advantages, experience.returns = self.get_advantages_and_returns(
+                    experience.values,
+                    reward,
+                    experience.action_mask,
+                    generate_kwargs["gamma"],
+                    generate_kwargs["lambd"],
+                )
+            elif self.advantage_estimator in ["reinforce", "rloo"]:
+                experience.returns = self.get_cumulative_returns(
+                    reward,
+                    experience.action_mask,
+                    generate_kwargs["gamma"],
+                )
+                experience.advantages = deepcopy(experience.returns)
+            else:
+                raise Exception(f"Unkown advantage_estimator {self.advantage_estimator}")
+
+            # calculate the return info.
+            if not getattr(self, "packing_samples", False):
+                return_sums = reward.sum(dim=-1)
+            else:
+                return_sums = torch.tensor(
+                    [each_reward.sum() for each_reward in reward], device=torch.cuda.current_device()
+                )
+            experience.info["return"] = return_sums
+            # remove unnecessary info
+            experience.kl = None
+            del experience.info["num_actions"]
+            experience.to_device("cpu")
+    
+        # experiences = super().make_experience_list(all_prompts, **generate_kwargs)
         if self.critic is not None:
             for experience in experiences:
                 # send experience to critic
@@ -556,7 +680,10 @@ class RemoteExperienceMaker(NaiveExperienceMaker):
                 queries = self.tokenizer.batch_decode(sequences_list, skip_special_tokens=False)
 
             for rm in self.remote_rm_url:
-                r = remote_rm_fn_ray.remote(rm, queries=queries)
+                if rm.startswith("rule:"):
+                    r = ray.put(torch.tensor([0.0] * len(queries)))
+                else:
+                    r = remote_rm_fn_ray.remote(rm, queries=queries)
                 r_refs.append(r)
 
         # log probs

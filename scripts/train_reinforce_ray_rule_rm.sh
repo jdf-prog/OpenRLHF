@@ -6,9 +6,9 @@ working_dir=$PWD
 policy_pretrain="Qwen/Qwen2.5-7B-Instruct"
 dataset="CodeDPO/codedpo_20241208_openrlhf_format_hard"
 rm_port=14236
-remote_rm_url="http://localhost:$rm_port/get_reward"
+remote_rm_url="rule:http://localhost:$rm_port/get_reward"
 # save_name="qwen25-ins-7b-coderm-7b-reinforce++"
-save_name="qwen25-ins-7b-testcaserm-7b-reinforce++"
+save_name="qwen25-ins-7b-testcaserm-7b-reinforce++-debug"
 reward_log_file="logs/reward.log"
 mkdir -p logs
 python -m openrlhf.cli.serve_rm \

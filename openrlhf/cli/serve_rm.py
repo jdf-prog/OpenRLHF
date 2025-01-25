@@ -7,6 +7,7 @@ import hashlib
 import datasets
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from tqdm import tqdm
 
 from openrlhf.models import get_llm_for_sequence_regression
 from openrlhf.utils import get_tokenizer
@@ -154,8 +155,10 @@ class RuleBasedRewardModelProxy:
         self.dataset = datasets.load_dataset(args.dataset, split="train")
         self.input_key = args.input_key
         self.gt_key = args.gt_key
+        dataset_questions = [item['context_messages'][0]['content'] for item in self.dataset]
+        dataset_questions = [self.policy_tokenizer.decode(self.policy_tokenizer.encode(x)) for x in tqdm(dataset_questions, desc="Tokenizing dataset questions")]
         self.hash_map = {
-            hash_string(item['context_messages'][0]['content']): item for item in self.dataset
+            hash_string(q): item for q, item in zip(dataset_questions, self.dataset)
         }
         assert self.rule in ["test_case", "exact_match"]
         if self.rule == "test_case":    
@@ -185,6 +188,12 @@ class RuleBasedRewardModelProxy:
                 questions.append(conversation[idx]['content'])
                 responses.append(conversation[idx + 1]['content'])
             question_hashes = [hash_string(question) for question in questions]
+            if not all([x in self.hash_map for x in question_hashes]):
+                torch.save(question_hashes, "question_hashes.pt")
+                torch.save(conversations, "conversations.pt")
+                torch.save(questions, "questions.pt")
+                torch.save(responses, "responses.pt")
+                raise Exception("Not all questions are in the dataset")
             assert all([x in self.hash_map for x in question_hashes]), "Not all questions are in the dataset"
             test_cases = [self.hash_map[x][self.gt_key] for x in question_hashes]
             samples = [
@@ -201,7 +210,7 @@ class RuleBasedRewardModelProxy:
             with open("samples.jsonl", "w") as f:
                 for sample in samples:
                     f.write(json.dumps(sample) + "\n")
-            all_samples_results, pass_rates = evaluate("samples.jsonl")
+            all_samples_results, pass_rates = evaluate("samples.jsonl", n_workers=16)
             scores = pass_rates
         elif self.rule == "exact_match":
             raise NotImplementedError
