@@ -156,7 +156,12 @@ class RuleBasedRewardModelProxy:
         self.input_key = args.input_key
         self.gt_key = args.gt_key
         self.binary = args.binary
-        dataset_questions = [item['context_messages'][0]['content'] for item in self.dataset]
+        dataset_questions = []
+        for conversation in self.dataset['context_messages']:
+            idx = 0
+            while conversation[idx]['role'] != "user":
+                idx += 1
+            dataset_questions.append(conversation[idx]['content'])
         dataset_questions = [self.policy_tokenizer.decode(self.policy_tokenizer.encode(x)) for x in tqdm(dataset_questions, desc="Tokenizing dataset questions")]
         self.hash_map = {
             hash_string(q): item for q, item in zip(dataset_questions, self.dataset)

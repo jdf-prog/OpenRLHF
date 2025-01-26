@@ -3,10 +3,14 @@ import fire
 import datasets
 import numpy as np
 
+r1_system_prompt = """\
+A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think> <answer> answer here </answer>.
+"""
 def main(
     dataset_path="CodeDPO/codedpo_20241208",
     output_path="CodeDPO/codedpo_20241208_openrlhf_format",
     only_keep_hard_examples=True,
+    add_r1_system_prompt=False
 ):
     dataset = datasets.load_dataset(dataset_path, split="train")   
     print(f"Loaded {len(dataset)} examples")
@@ -52,6 +56,13 @@ def main(
             print(dataset[i]['accs'])
         
         dataset = dataset.remove_columns("accs")
+        
+    if add_r1_system_prompt:
+        def add_r1_prompt(item):
+            item['context_messages'].insert(0, {"content": r1_system_prompt, "role": "system"})
+            return item
+        dataset = dataset.map(add_r1_prompt, desc="Adding R1 system prompt", num_proc=4)
+        output_path += "_r1"
     
     dataset.push_to_hub(output_path)
     print(f"Pushed to {output_path}")
@@ -61,6 +72,7 @@ if __name__ == "__main__":
     
     
 """
-python scripts/format_code_data.py --dataset_path "CodeDPO/codedpo_20241208" --output_path "CodeDPO/codedpo_20241208_openrlhf_format" --only_keep_hard_examples True
-python scripts/format_code_data.py --dataset_path "CodeDPO/rlhf_dataset_20250126" --output_path "CodeDPO/rlhf_dataset_20250126_openrlhf_format" --only_keep_hard_examples True
+python scripts/format_code_rl_data.py --dataset_path "CodeDPO/codedpo_20241208" --output_path "CodeDPO/codedpo_20241208_openrlhf_format" --only_keep_hard_examples True
+python scripts/format_code_rl_data.py --dataset_path "CodeDPO/rlhf_dataset_20250126" --output_path "CodeDPO/rlhf_dataset_20250126_openrlhf_format" --only_keep_hard_examples True
+python scripts/format_code_rl_data.py --dataset_path "CodeDPO/rlhf_dataset_20250126" --output_path "CodeDPO/rlhf_dataset_20250126_openrlhf_format" --only_keep_hard_examples True --add_r1_system_prompt True
 """
