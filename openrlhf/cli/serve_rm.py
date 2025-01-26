@@ -110,7 +110,7 @@ class RewardModelProxy:
             conversations.append(conversation)
         queries = []
         for conversation in conversations:
-            query = self.tokenizer.apply_template(conversation, self.policy_tokenizer, tokenize=False, add_generation_prompt=False)
+            query = self.tokenizer.apply_chat_template(conversation, tokenize=False, add_generation_prompt=False)
             queries.append(query)
 
         # remove pad_token
@@ -208,9 +208,9 @@ class RuleBasedRewardModelProxy:
                 for i, (question_hash, question, response, test_case) in enumerate(zip(question_hashes, questions, responses, test_cases))
             ]
             # save samples to a file
-            with open("samples.jsonl", "w") as f:
-                for sample in samples:
-                    f.write(json.dumps(sample) + "\n")
+            # with open("samples.jsonl", "w") as f:
+            #     for sample in samples:
+            #         f.write(json.dumps(sample) + "\n")
             all_samples_results, pass_rates = evaluate("samples.jsonl", n_workers=16, test_details=False)
             scores = pass_rates
             if self.binary:
