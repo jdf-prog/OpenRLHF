@@ -12,6 +12,7 @@ fi
 if [ $margin_loss = True ]; then
     dataset_path=./data/$dataset_path"_with_margin.json"
     post_args=$post_args"--margin_loss "
+    run_name=$run_name"_with_margin_"$loss_type
 fi
 # cannot be True if binary is True, becuase it's meaningless, binary pairs has fixed margin, 
 if [ "$binary" = "True" ] && [ "$margin_loss" = "True" ]; then
