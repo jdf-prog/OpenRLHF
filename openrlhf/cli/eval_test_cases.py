@@ -223,7 +223,7 @@ def evaluate(
                 # test_inputs, expected_output = get_test_inputs_outputs_from_test_case(sample["tests"])
                 entry_point = get_entry_point_from_test_case(sample['tests'][0])
                 if extract_solution:
-                    sample["solution"] = code_extract(sample["output"].encode('utf-8', 'ignore').decode('utf-8'))    
+                    sample["solution"] = code_extract(sample["output"].encode('utf-8', 'ignore').decode('utf-8').replace('\x00', ''))    
                     if entry_point not in sample["solution"]:
                         sample["solution"] = sample['output']
                 else:
