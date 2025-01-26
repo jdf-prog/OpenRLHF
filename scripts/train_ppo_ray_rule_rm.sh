@@ -3,7 +3,7 @@ working_dir=$PWD
 # ppo
 policy_pretrain="Qwen/Qwen2.5-7B-Instruct"
 # dataset="CodeDPO/codedpo_20241208_openrlhf_format_hard" # old dataset where test cases are not filterd by Qwen2.5-Coder-32B
-dataset="CodeDPO/rlhf_dataset_20250126_openrlhf_format" # new dataset where test cases are filterd by Qwen2.5-Coder-32B
+dataset="CodeDPO/rlhf_dataset_20250126_openrlhf_format_hard" # new dataset where test cases are filterd by Qwen2.5-Coder-32B
 rm_port=14236
 remote_rm_url="rule:http://localhost:$rm_port/get_reward"
 # save_name="qwen25-ins-7b-coderm-7b-reinforce++"
@@ -22,7 +22,6 @@ python -m openrlhf.cli.serve_rm \
    --port $rm_port \
    --bf16 \
    --flash_attn \
-   --binary \
    --normalize_reward \
    --max_len 8192 \
    --batch_size 16 \
