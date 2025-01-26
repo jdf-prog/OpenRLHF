@@ -5,7 +5,7 @@ import torch
 from torch.optim import Optimizer
 from tqdm import tqdm
 
-from openrlhf.models import LogExpLoss, PairWiseLoss
+from openrlhf.models import LogExpLoss, PairWiseLoss, ScaleBTLoss
 from openrlhf.utils.distributed_sampler import DistributedSampler
 
 
@@ -54,6 +54,9 @@ class RewardModelTrainer(ABC):
         if loss == "sigmoid":
             self.loss_fn = PairWiseLoss()
             self.strategy.print("LogSigmoid Loss")
+        elif loss == "scalebt":
+            self.loss_fn = ScaleBTLoss()
+            self.strategy.print("ScaleBT Loss")
         else:
             self.loss_fn = LogExpLoss()
             self.strategy.print("LogExp Loss")
