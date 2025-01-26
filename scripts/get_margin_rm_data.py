@@ -21,6 +21,6 @@ def main(
 if __name__ == "__main__":
     fire.Fire(main)
 """
-python scripts/binarize_pref_data.py --dataset_path "CodeDPO/open_rlhf_dpo_qwen_coder_2.5_inf_20250124" --split train --output_dir ./data/
-python scripts/binarize_pref_data.py --dataset_path "CodeDPO/open_rlhf_dpo_qwen_coder_2.5_inf_20250126" --split train --output_dir ./data/
+python scripts/get_margin_rm_data.py --dataset_path "CodeDPO/open_rlhf_dpo_qwen_coder_2.5_inf_20250124" --split train --output_dir ./data/
+python scripts/get_margin_rm_data.py --dataset_path "CodeDPO/open_rlhf_dpo_qwen_coder_2.5_inf_20250126" --split train --output_dir ./data/
 """
