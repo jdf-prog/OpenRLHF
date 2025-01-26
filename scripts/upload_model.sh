@@ -1,1 +1,2 @@
-# hugginface-cli upload --repo-type model {hf_model_id} {local_path} {path_in_repo(default .)}
+# huggingface-cli upload --repo-type model {hf_model_id} {local_path} {path_in_repo(default .)}
+huggingface-cli upload --repo-type model CodeDPO/qwen25-ins-7b-testcaserm-7b-reinforce-plus_new_dataset /root/dongfu/OpenRLHF/saves/checkpoint/qwen25-ins-7b-testcaserm-7b-reinforce++_new_dataset .

@@ -1,17 +1,17 @@
 set -x 
 working_dir=$PWD
 # ppo
-policy_pretrain="Qwen/Qwen2.5-7B-Instruct"
+policy_pretrain="Qwen/Qwen2.5-Coder-7B"
 # dataset="CodeDPO/codedpo_20241208_openrlhf_format_hard" # old dataset where test cases are not filterd by Qwen2.5-Coder-32B
 dataset="CodeDPO/rlhf_dataset_20250126_openrlhf_format_hard" # new dataset where test cases are filterd by Qwen2.5-Coder-32B
 rm_port=14236
 remote_rm_url="rule:http://localhost:$rm_port/get_reward"
 # save_name="qwen25-ins-7b-coderm-7b-reinforce++"
-save_name="qwen25-ins-7b-testcaserm-7b-reinforce++"
+save_name="qwen25-coder-base-7b-testcaserm-7b-ppo-new-dataset-hard"
 reward_log_file="logs/reward.log"
 mkdir -p logs
 
-binary_reward=True # whether to map rewards to 1 or 0 by "1 if reward==1 else 0"
+binary_reward=False # whether to map rewards to 1 or 0 by "1 if reward==1 else 0"
 post_args=""
 if [ $binary_reward = True ]; then
    post_args="--binary "
@@ -53,7 +53,7 @@ ray job submit --address="http://127.0.0.1:8265" \
    --max_samples 1000000 \
    --max_epochs 1 \
    --prompt_max_len 2048 \
-   --generate_max_len 2048 \
+   --generate_max_len 1024 \
    --zero_stage 3 \
    --bf16 \
    --actor_learning_rate 5e-7 \
