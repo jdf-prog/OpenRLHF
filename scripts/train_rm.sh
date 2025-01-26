@@ -1,5 +1,6 @@
 pretrain=Qwen/Qwen2.5-Coder-7B
-dataset_path=CodeDPO/open_rlhf_dpo_qwen_coder_2.5_inf_20250124
+# dataset_path=CodeDPO/open_rlhf_dpo_qwen_coder_2.5_inf_20250124 # old dataset where pass rate is partially computed (exit if encounter one failed test case)
+dataset_path=CodeDPO/open_rlhf_dpo_qwen_coder_2.5_inf_20250126 # new dataset where pass rate is fully computed
 run_name=Qwen2.5-Coder-7B
 binary=False
 margin_loss=True
