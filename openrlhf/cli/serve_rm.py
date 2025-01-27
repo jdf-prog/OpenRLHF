@@ -208,10 +208,8 @@ class RuleBasedRewardModelProxy:
                 for i, (question_hash, question, response, test_case) in enumerate(zip(question_hashes, questions, responses, test_cases))
             ]
             # save samples to a file
-            # with open("samples.jsonl", "w") as f:
-            #     for sample in samples:
-            #         f.write(json.dumps(sample) + "\n")
-            all_samples_results, pass_rates = evaluate("samples.jsonl", n_workers=16, test_details=False)
+            all_samples_results, pass_rates = evaluate("samples.jsonl", n_workers=16, test_details=not self.binary)
+            print(all_samples_results)
             scores = pass_rates
             if self.binary:
                 scores = [1 if x == 1 else 0 for x in scores] # if binary

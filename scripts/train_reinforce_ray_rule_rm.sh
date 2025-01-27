@@ -5,12 +5,11 @@ working_dir=$PWD
 
 policy_pretrain="Qwen/Qwen2.5-Coder-7B"
 # dataset="CodeDPO/codedpo_20241208_openrlhf_format_hard" # old dataset where test cases are not filterd by Qwen2.5-Coder-32B
-# dataset="CodeDPO/rlhf_dataset_20250126_openrlhf_format_hard" # new dataset where test cases are filterd by Qwen2.5-Coder-32B
-dataset="CodeDPO/rlhf_dataset_20250126_openrlhf_format" # new dataset where test cases are filterd by Qwen2.5-Coder-32B
+dataset="CodeDPO/rlhf_dataset_20250126_openrlhf_format_hard_r1" # new dataset where test cases are filterd by Qwen2.5-Coder-32B
 rm_port=14236
 remote_rm_url="rule:http://localhost:$rm_port/get_reward"
 # save_name="qwen25-ins-7b-coderm-7b-reinforce++"
-save_name="qwen25-coder-base-7b-testcaserm-7b-reinforce++_new_dataset_full"
+save_name="qwen25-coder-base-7b-testcaserm-7b-reinforce++_new_dataset_hard_r1"
 reward_log_file="logs/reward.log"
 mkdir -p logs
 
@@ -39,8 +38,8 @@ ray job submit --address="http://127.0.0.1:8265" \
    -- python3 -m openrlhf.cli.train_ppo_ray \
    --ref_num_nodes 1 \
    --ref_num_gpus_per_node 1 \
-   --reward_num_nodes 1 \
-   --reward_num_gpus_per_node 1 \
+   --reward_num_nodes 0 \
+   --reward_num_gpus_per_node 0 \
    --actor_num_nodes 1 \
    --actor_num_gpus_per_node 4 \
    --vllm_num_engines 2 \

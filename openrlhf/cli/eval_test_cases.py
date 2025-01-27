@@ -89,7 +89,12 @@ def check_correctness_assert(
     min_time_limit: float = DEFAULT_MIN_TIME_LIMIT,
     gt_time_limit_factor: float = DEFAULT_GT_TIME_LIMIT_FACTOR,
     atol: int=1e-6,
+    extract_solution:bool=False,
 ) -> Dict[str, Result]:  # {...}, "base" | "plus" -> (status, details)
+    if extract_solution:
+        _solution = code_extract(solution.encode('utf-8', 'ignore').decode('utf-8').replace('\x00', ''))    
+        if entry_point in _solution:
+            solution = _solution
     ret = {
         "completion_id": completion_id,
         "task_id": task_id,
@@ -222,12 +227,7 @@ def evaluate(
                 task_id = sample["task_id"]
                 # test_inputs, expected_output = get_test_inputs_outputs_from_test_case(sample["tests"])
                 entry_point = get_entry_point_from_test_case(sample['tests'][0])
-                if extract_solution:
-                    sample["solution"] = code_extract(sample["output"].encode('utf-8', 'ignore').decode('utf-8').replace('\x00', ''))    
-                    if entry_point not in sample["solution"]:
-                        sample["solution"] = sample['output']
-                else:
-                    sample["solution"] = sample['output']
+                
                 solution = sample["solution"]
                 remainings.add(sample["_identifier"])
                 args = (

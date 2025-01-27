@@ -4,10 +4,11 @@ working_dir=$PWD
 # reinforce++
 
 policy_pretrain=Qwen/Qwen2.5-7B-Instruct
-reward_pretrain=CodeDPO/qwen_coder_2.5_rm_openrlhf
+# reward_pretrain=CodeDPO/qwen_coder_2.5_rm_openrlhf
+reward_pretrain=CodeDPO/Qwen2.5-Coder-7B-new_with_margin_scalebt
 run_name=qwen25-ins-7b-coderm-7b-reinforce++
 # dataset="CodeDPO/codedpo_20241208_openrlhf_format_hard" # old dataset where test cases are not filterd by Qwen2.5-Coder-32B
-dataset="CodeDPO/rlhf_dataset_20250126_openrlhf_format_hard" # new dataset where test cases are filterd by Qwen2.5-Coder-32B
+dataset="CodeDPO/rlhf_dataset_20250126_openrlhf_format_hard_new_rm" # new dataset where test cases are filterd by Qwen2.5-Coder-32B
 
 ray job submit --address="http://127.0.0.1:8265" \
    --runtime-env-json='{"working_dir": "'$working_dir'"}' \
