@@ -81,6 +81,7 @@ ray job submit --address="http://127.0.0.1:8265" \
    # --normalize_reward \
 # also supports --advantage_estimator rloo
 
+pkill -P $PID_RM
 kill -9 $PID_RM
 
 huggingface-cli upload --repo-type model CodeDPO/$save_name $working_dir/saves/checkpoint/$save_name .

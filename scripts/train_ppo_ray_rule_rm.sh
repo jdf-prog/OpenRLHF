@@ -81,6 +81,7 @@ ray job submit --address="http://127.0.0.1:8265" \
 # --remote_rm_url http://localhost:5000/get_reward
 
 # --vllm_sync_backend nccl (Only for multi-nodes with vLLM 0.6.4+ or vLLM 0.4.2)
+pkill -P $PID_RM
 kill -9 $PID_RM
 
 huggingface-cli upload --repo-type model CodeDPO/$save_name $working_dir/saves/checkpoint/$save_name .
