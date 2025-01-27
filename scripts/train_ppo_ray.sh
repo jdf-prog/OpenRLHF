@@ -5,9 +5,9 @@ working_dir=$PWD
 policy_pretrain=Qwen/Qwen2.5-7B-Instruct
 # reward_pretrain=CodeDPO/qwen_coder_2.5_rm_openrlhf
 reward_pretrain=CodeDPO/Qwen2.5-Coder-7B-new_with_margin_scalebt
-run_name=qwen25-ins-7b-coderm-7b-ppo
+run_name=qwen25-ins-7b-coderm_new_margin_scalebt-7b-ppo 
 # dataset="CodeDPO/codedpo_20241208_openrlhf_format_hard" # old dataset where test cases are not filterd by Qwen2.5-Coder-32B
-dataset="CodeDPO/rlhf_dataset_20250126_openrlhf_format_hard_r1" # new dataset where test cases are filterd by Qwen2.5-Coder-32B
+dataset="CodeDPO/rlhf_dataset_20250126_openrlhf_format_hard" # new dataset where test cases are filterd by Qwen2.5-Coder-32B
 
 ray job submit --address="http://127.0.0.1:8265" \
    --runtime-env-json='{"working_dir": "'$working_dir'"}' \
@@ -60,3 +60,5 @@ ray job submit --address="http://127.0.0.1:8265" \
 # --remote_rm_url http://localhost:5000/get_reward
 
 # --vllm_sync_backend nccl (Only for multi-nodes with vLLM 0.6.4+ or vLLM 0.4.2)
+
+huggingface-cli upload --repo-type model CodeDPO/$run_name $working_dir/saves/checkpoint/$run_name .

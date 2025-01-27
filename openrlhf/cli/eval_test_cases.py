@@ -88,8 +88,8 @@ def check_correctness_assert(
     identifier=None,
     min_time_limit: float = DEFAULT_MIN_TIME_LIMIT,
     gt_time_limit_factor: float = DEFAULT_GT_TIME_LIMIT_FACTOR,
-    atol: int=1e-6,
     extract_solution:bool=False,
+    atol: int=1e-6,
 ) -> Dict[str, Result]:  # {...}, "base" | "plus" -> (status, details)
     if extract_solution:
         _solution = code_extract(solution.encode('utf-8', 'ignore').decode('utf-8').replace('\x00', ''))    
@@ -227,8 +227,7 @@ def evaluate(
                 task_id = sample["task_id"]
                 # test_inputs, expected_output = get_test_inputs_outputs_from_test_case(sample["tests"])
                 entry_point = get_entry_point_from_test_case(sample['tests'][0])
-                
-                solution = sample["solution"]
+                solution = sample["output"]
                 remainings.add(sample["_identifier"])
                 args = (
                     task_id,
@@ -242,6 +241,7 @@ def evaluate(
                     sample["_identifier"] if "_identifier" in sample else None,
                     min_time_limit,
                     gt_time_limit_factor,
+                    extract_solution,
                 )
                 futures.append(executor.submit(check_correctness_assert, *args))
                 completion_id[task_id] += 1

@@ -13,6 +13,13 @@ from openrlhf.models import get_llm_for_sequence_regression
 from openrlhf.utils import get_tokenizer
 from openrlhf.utils.logging_utils import init_logger
 from transformers import AutoTokenizer
+from typing import List
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
+app = FastAPI()
+# Create a thread pool for CPU-bound operations
+thread_pool = ThreadPoolExecutor(max_workers=8)
 
 logger = init_logger(__name__)
 
@@ -169,7 +176,16 @@ class RuleBasedRewardModelProxy:
         assert self.rule in ["test_case", "exact_match"]
         if self.rule == "test_case":    
             from .eval_test_cases import evaluate
-        
+    
+    async def get_reward_async(self, queries: List[str]) -> List[float]:
+        # If get_reward is CPU-bound, run it in a thread pool
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            thread_pool, 
+            self.get_reward,
+            queries
+        )
+            
     def get_reward(self, queries):
         if self.batch_size is None:
             batch_size = len(queries)
@@ -199,6 +215,7 @@ class RuleBasedRewardModelProxy:
                 torch.save(conversations, "conversations.pt")
                 torch.save(questions, "questions.pt")
                 torch.save(responses, "responses.pt")
+                torch.save(self.hash_map, "hash_map.pt")
                 raise Exception("Not all questions are in the dataset")
             assert all([x in self.hash_map for x in question_hashes]), "Not all questions are in the dataset"
             test_cases = [self.hash_map[x][self.gt_key] for x in question_hashes]
@@ -213,8 +230,7 @@ class RuleBasedRewardModelProxy:
                 for i, (question_hash, question, response, test_case) in enumerate(zip(question_hashes, questions, responses, test_cases))
             ]
             # save samples to a file
-            all_samples_results, pass_rates = evaluate("samples.jsonl", n_workers=16, test_details=not self.binary)
-            print(all_samples_results)
+            all_samples_results, pass_rates = evaluate(samples, n_workers=16, test_details=not self.binary)
             scores = pass_rates
             if self.binary:
                 scores = [1 if x == 1 else 0 for x in scores] # if binary
@@ -271,7 +287,10 @@ if __name__ == "__main__":
     async def get_reward(request: Request):
         data = await request.json()
         queries = data.get("query")
-        rewards = reward_model.get_reward(queries)
+        if args.rule == "reward_model":
+            rewards = reward_model.get_reward(queries)
+        else:
+            rewards = await reward_model.get_reward_async(queries)
         result = {"rewards": rewards}
         logger.info(f"Sent JSON: {result}")
         return JSONResponse(result)

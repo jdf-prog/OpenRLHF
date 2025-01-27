@@ -32,31 +32,34 @@ python -m openrlhf.cli.serve_rm \
    --input_key context_messages \
    --gt_key tests \
    $post_args > $reward_log_file 2>&1 &
+PID_RM=$!
 
 ray job submit --address="http://127.0.0.1:8265" \
    --runtime-env-json='{"working_dir": "'$working_dir'"}' \
    -- python3 -m openrlhf.cli.train_ppo_ray \
    --ref_num_nodes 1 \
-   --ref_num_gpus_per_node 1 \
+   --ref_num_gpus_per_node 4 \
    --reward_num_nodes 0 \
    --reward_num_gpus_per_node 0 \
    --actor_num_nodes 1 \
    --actor_num_gpus_per_node 4 \
+   --colocate_actor_ref \
    --vllm_num_engines 2 \
-   --vllm_tensor_parallel_size 1 \
+   --vllm_tensor_parallel_size 2 \
    --pretrain $policy_pretrain \
    --reward_pretrain CodeDPO/qwen_coder_2.5_rm_openrlhf \
    --value_head_prefix "score" \
    --save_path $working_dir/saves/checkpoint/$save_name \
-   --micro_train_batch_size 16 \
+   --micro_train_batch_size 8 \
    --train_batch_size 128 \
-   --micro_rollout_batch_size 32 \
+   --micro_rollout_batch_size 8 \
    --rollout_batch_size 256 \
    --n_samples_per_prompt 8 \
    --max_epochs 1 \
    --prompt_max_len 2048 \
    --max_samples 1000000 \
-   --generate_max_len 1024 \
+   --generate_max_len 2048 \
+   --num_episodes 2 \
    --advantage_estimator reinforce \
    --zero_stage 3 \
    --bf16 \
@@ -78,4 +81,6 @@ ray job submit --address="http://127.0.0.1:8265" \
    # --normalize_reward \
 # also supports --advantage_estimator rloo
 
-pkill -f openrlhf.cli.serve_rm
+kill -9 $PID_RM
+
+huggingface-cli upload --repo-type model CodeDPO/$save_name $working_dir/saves/checkpoint/$save_name .

@@ -30,27 +30,28 @@ python -m openrlhf.cli.serve_rm \
    --input_key context_messages \
    --gt_key tests \
    $post_args > $reward_log_file 2>&1 &
+PID_RM=$!
 
 ray job submit --address="http://127.0.0.1:8265" \
    --runtime-env-json='{"working_dir": "'$working_dir'"}' \
    -- python3 -m openrlhf.cli.train_ppo_ray \
    --ref_num_nodes 1 \
-   --ref_num_gpus_per_node 2 \
+   --ref_num_gpus_per_node 4 \
    --critic_num_nodes 1 \
    --critic_num_gpus_per_node 2 \
    --actor_num_nodes 1 \
-   --actor_num_gpus_per_node 2 \
+   --actor_num_gpus_per_node 4 \
    --vllm_num_engines 2 \
-   --vllm_tensor_parallel_size 2 \
+   --vllm_tensor_parallel_size 1 \
    --colocate_actor_ref \
    --pretrain $policy_pretrain \
    --save_path $working_dir/saves/checkpoint/$save_name \
    --micro_train_batch_size 4 \
    --train_batch_size 128 \
    --micro_rollout_batch_size 8 \
-   --rollout_batch_size 64 \
+   --rollout_batch_size 1024 \
    --n_samples_per_prompt 8 \
-   --num_episodes 10 \
+   --num_episodes 5 \
    --max_samples 1000000 \
    --max_epochs 1 \
    --prompt_max_len 2048 \
@@ -80,3 +81,6 @@ ray job submit --address="http://127.0.0.1:8265" \
 # --remote_rm_url http://localhost:5000/get_reward
 
 # --vllm_sync_backend nccl (Only for multi-nodes with vLLM 0.6.4+ or vLLM 0.4.2)
+kill -9 $PID_RM
+
+huggingface-cli upload --repo-type model CodeDPO/$save_name $working_dir/saves/checkpoint/$save_name .
