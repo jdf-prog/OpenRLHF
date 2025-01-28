@@ -48,14 +48,14 @@ ray job submit --address="http://127.0.0.1:8265" \
    --save_path $working_dir/saves/checkpoint/$save_name \
    --micro_train_batch_size 4 \
    --train_batch_size 128 \
-   --micro_rollout_batch_size 8 \
+   --micro_rollout_batch_size 4 \
    --rollout_batch_size 1024 \
    --n_samples_per_prompt 8 \
    --num_episodes 5 \
    --max_samples 1000000 \
    --max_epochs 1 \
    --prompt_max_len 2048 \
-   --generate_max_len 2048 \
+   --generate_max_len 3072 \
    --zero_stage 3 \
    --bf16 \
    --actor_learning_rate 5e-7 \

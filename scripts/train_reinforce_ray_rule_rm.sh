@@ -9,7 +9,7 @@ dataset="CodeDPO/rlhf_dataset_20250126_openrlhf_format_hard" # new dataset where
 rm_port=14236
 remote_rm_url="rule:http://localhost:$rm_port/get_reward"
 # save_name="qwen25-ins-7b-coderm-7b-reinforce++"
-save_name="qwen25-coder-base-7b-testcaserm-7b-reinforce++_new_dataset_hard"
+save_name="qwen25-coder-base-7b-testcaserm2-7b-reinforce++_new_dataset_hard"
 reward_log_file="logs/reward.log"
 mkdir -p logs
 
@@ -52,14 +52,14 @@ ray job submit --address="http://127.0.0.1:8265" \
    --save_path $working_dir/saves/checkpoint/$save_name \
    --micro_train_batch_size 8 \
    --train_batch_size 128 \
-   --micro_rollout_batch_size 8 \
+   --micro_rollout_batch_size 4 \
    --rollout_batch_size 256 \
    --n_samples_per_prompt 8 \
    --max_epochs 1 \
    --prompt_max_len 2048 \
    --max_samples 1000000 \
    --generate_max_len 2048 \
-   --num_episodes 2 \
+   --num_episodes 1 \
    --advantage_estimator reinforce \
    --zero_stage 3 \
    --bf16 \
