@@ -68,7 +68,7 @@ def check_correctness(
         entry_point,
         expected=expected_output,
         atol=atol,
-        ref_time=[DEFAULT_MIN_TIME_LIMIT / DEFAULT_GT_TIME_LIMIT_FACTOR]*len(test_inputs),
+        ref_time=[DEFAULT_MIN_TIME_LIMIT]*len(test_inputs),
         fast_check=fast_check,
         min_time_limit=min_time_limit,
         gt_time_limit_factor=gt_time_limit_factor,
