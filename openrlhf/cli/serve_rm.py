@@ -15,11 +15,12 @@ from openrlhf.utils.logging_utils import init_logger
 from transformers import AutoTokenizer
 from typing import List
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
 app = FastAPI()
 # Create a thread pool for CPU-bound operations
-thread_pool = ThreadPoolExecutor(max_workers=8)
+# thread_pool = ThreadPoolExecutor(max_workers=2)
+thread_pool = ProcessPoolExecutor(max_workers=2)
 
 logger = init_logger(__name__)
 
