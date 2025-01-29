@@ -3,13 +3,14 @@ set -x
 working_dir=$PWD
 # reinforce++
 
-policy_pretrain="Qwen/Qwen2.5-Coder-7B-Instruct"
+# policy_pretrain="Qwen/Qwen2.5-Coder-7B-Instruct"
+policy_pretrain="Qwen/Qwen2.5-Coder-7B"
 # dataset="CodeDPO/codedpo_20241208_openrlhf_format_hard" # old dataset where test cases are not filterd by Qwen2.5-Coder-32B
-dataset="CodeDPO/rlhf_dataset_20250126_openrlhf_format_hard" # new dataset where test cases are filterd by Qwen2.5-Coder-32B
+dataset="CodeDPO/rlhf_dataset_20250126_openrlhf_format_hard_r1" # new dataset where test cases are filterd by Qwen2.5-Coder-32B
 rm_port=14236
 remote_rm_url="rule:http://localhost:$rm_port/get_reward"
 # save_name="qwen25-ins-7b-coderm-7b-reinforce++"
-save_name="qwen25-coder-inst-7b-testcaserm2-7b-reinforce++_new_dataset_hard"
+save_name="qwen25-coder-base-7b-testcaserm2-7b-reinforce++_new_dataset_hard_r1"
 reward_log_file="logs/reward.log"
 mkdir -p logs
 
@@ -44,8 +45,8 @@ ray job submit --address="http://127.0.0.1:8265" \
    --actor_num_nodes 1 \
    --actor_num_gpus_per_node 4 \
    --colocate_actor_ref \
-   --vllm_num_engines 2 \
-   --vllm_tensor_parallel_size 2 \
+   --vllm_num_engines 4 \
+   --vllm_tensor_parallel_size 1 \
    --pretrain $policy_pretrain \
    --reward_pretrain CodeDPO/qwen_coder_2.5_rm_openrlhf \
    --value_head_prefix "score" \
@@ -53,13 +54,13 @@ ray job submit --address="http://127.0.0.1:8265" \
    --micro_train_batch_size 8 \
    --train_batch_size 128 \
    --micro_rollout_batch_size 8 \
-   --rollout_batch_size 256 \
+   --rollout_batch_size 512 \
    --n_samples_per_prompt 8 \
    --max_epochs 1 \
    --prompt_max_len 2048 \
    --max_samples 1000000 \
    --generate_max_len 2048 \
-   --num_episodes 1 \
+   --num_episodes 3 \
    --advantage_estimator reinforce \
    --zero_stage 3 \
    --bf16 \

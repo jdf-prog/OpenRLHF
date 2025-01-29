@@ -92,9 +92,12 @@ def check_correctness_assert(
     atol: int=1e-6,
 ) -> Dict[str, Result]:  # {...}, "base" | "plus" -> (status, details)
     if extract_solution:
-        _solution = code_extract(solution.encode('utf-8', 'ignore').decode('utf-8').replace('\x00', ''))    
-        if entry_point in _solution:
-            solution = _solution
+        # base model may sometimes outputs too many "\n" and makes the code extraction too ** flow.
+        # so we skip them if the number of lines > 500
+        if not len(solution.split("\n")) > 500: 
+            _solution = code_extract(solution.encode('utf-8', 'ignore').decode('utf-8').replace('\x00', ''))    
+            if entry_point in _solution:
+                solution = _solution
     ret = {
         "completion_id": completion_id,
         "task_id": task_id,
@@ -189,16 +192,18 @@ def evaluate(
                 
     if output_file is not None:
         result_path = output_file
-
+        
     if result_path and os.path.isfile(result_path) and not i_just_wanna_run:
         print(f"Load from previous results from {result_path}")
-        with open(result_path, "r") as f:
-            results = json.load(f)
+        if result_path.endswith(".jsonl"):  
+            with open(result_path, "r") as f:
+                all_samples_results = [json.loads(line) for line in f]
+        else:
+            with open(result_path, "r") as f:
+                all_samples_results = json.load(f)
 
-        results = compatible_eval_result(results)
     else:
         if isinstance(samples, str) and os.path.exists(samples):
-            result_path = samples.replace(".jsonl", ".eval_results.json")
             if samples.endswith(".jsonl"):
                 with open(samples, "r") as f:
                     all_samples = [json.loads(line) for line in f]
@@ -210,11 +215,6 @@ def evaluate(
         
         dataset_hash = None
 
-        results = {
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "hash": dataset_hash,
-            "eval": {},
-        }
         _identifier_list = [x['_identifier'] for x in all_samples]
         with ProcessPoolExecutor(max_workers=n_workers) as executor:
             futures = []
@@ -264,6 +264,16 @@ def evaluate(
             all_samples_results_identifier_map = {}
             for i, future in tqdm(enumerate(as_completed(futures)), total=n_samples):
                 result = future.result()
+                # except TimeoutError:
+                #     print(f"Timeout for {i}th sample")
+                #     result = {
+                #         "completion_id": i,
+                #         "task_id": task_id,
+                #         "_identifier": sample["_identifier"],
+                #         "solution": solution,
+                #         "n_tests": len(sample["tests"]),
+                #         "base": ["timeout", []]
+                #     }
                 remainings.remove(result["_identifier"])
                 result['pass_rate'] = sum(result['base'][1]) / result['n_tests']
                 # all_samples_results.append(result)
@@ -271,9 +281,22 @@ def evaluate(
                 eval_results[result["task_id"]].append(result)
             
             all_samples_results = [all_samples_results_identifier_map[x] for x in _identifier_list]
-        
+        # save the results
+        if result_path:
+            if result_path.endswith(".jsonl"):
+                with open(result_path, "w") as f:
+                    for result in all_samples_results:
+                        f.write(json.dumps(result) + "\n")
+            else:
+                with open(result_path, "w") as f:
+                    json.dump(all_samples_results, f, indent=4)
+            print(f"Results saved to {result_path}")
+            
     pass_rates = [x['pass_rate'] for x in all_samples_results]
-    return all_samples_results, pass_rates
+    if __name__ == "__main__":
+        print(f"Pass rate: {np.mean(pass_rates)}")
+    else:
+        return all_samples_results, pass_rates
 
 def main():
     from fire import Fire

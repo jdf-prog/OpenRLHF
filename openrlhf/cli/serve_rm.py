@@ -1,14 +1,16 @@
 import argparse
 import re
+import os
 import json
 import torch
 import uvicorn
 import hashlib
 import datasets
+import subprocess
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from tqdm import tqdm
-
+from pathlib import Path
 from openrlhf.models import get_llm_for_sequence_regression
 from openrlhf.utils import get_tokenizer
 from openrlhf.utils.logging_utils import init_logger
@@ -19,8 +21,8 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
 app = FastAPI()
 # Create a thread pool for CPU-bound operations
-# thread_pool = ThreadPoolExecutor(max_workers=2)
-thread_pool = ProcessPoolExecutor(max_workers=2)
+thread_pool = ThreadPoolExecutor(max_workers=4)
+# thread_pool = ProcessPoolExecutor(max_workers=2)
 
 logger = init_logger(__name__)
 
@@ -164,6 +166,7 @@ class RuleBasedRewardModelProxy:
         self.input_key = args.input_key
         self.gt_key = args.gt_key
         self.binary = args.binary
+        self.n_workers = args.n_workers
         dataset_questions = []
         for conversation in self.dataset['context_messages']:
             idx = 0
@@ -231,7 +234,26 @@ class RuleBasedRewardModelProxy:
                 for i, (question_hash, question, response, test_case) in enumerate(zip(question_hashes, questions, responses, test_cases))
             ]
             # save samples to a file
-            all_samples_results, pass_rates = evaluate(samples, n_workers=16, test_details=not self.binary)
+            temp_dir = "./temp/"
+            temp_file = temp_dir + f"{hash_string(''.join(queries))}.jsonl"
+            os.makedirs(temp_dir, exist_ok=True)
+            with open(temp_file, "w") as f:
+                for sample in samples:
+                    f.write(json.dumps(sample) + "\n")
+            # python -m openrlhf.cli.eval_test_cases --samples temp_file --n_workers 8 --test_details --output_file output_file
+            # python -m openrlhf.cli.eval_test_cases --samples /root/dongfu/OpenRLHF/temp/a9f6894d094547fb67e2aad4026c4b7c8a8b5889ae79b25ef59c7ef7372cdde3.jsonl --n_workers 8 --test_details --output_file /root/dongfu/OpenRLHF/temp/a9f6894d094547fb67e2aad4026c4b7c8a8b5889ae79b25ef59c7ef7372cdde3.eval_results.jsonl
+            if not self.binary:
+                output_file = Path(temp_file).with_suffix(".eval_results.jsonl").absolute()
+                command = f"python -m openrlhf.cli.eval_test_cases --samples {temp_file} --n_workers {self.n_workers} --test_details --output_file {output_file}"
+            else:
+                output_file = Path(temp_file).with_suffix(".eval_results_binary.jsonl")
+                command = f"python -m openrlhf.cli.eval_test_cases --samples {temp_file} --n_workers {self.n_workers} --output_file {output_file}"
+            print(command)
+            subprocess.run(command, shell=True)
+            with open(output_file, "r") as f:
+                all_samples_results = [json.loads(x) for x in f]
+            pass_rates = [x['pass_rate'] for x in all_samples_results]
+            # all_samples_results, pass_rates = evaluate(samples, n_workers=8, test_details=not self.binary)
             scores = pass_rates
             if self.binary:
                 scores = [1 if x == 1 else 0 for x in scores] # if binary
@@ -264,6 +286,7 @@ if __name__ == "__main__":
     parser.add_argument("--input_key", type=str, default="context_messages", help="Key for the input")
     parser.add_argument("--gt_key", type=str, default="tests", help="Key used for rule-based reward model that compares with the output to get the reward")
     parser.add_argument("--binary", action="store_true", default=False, help="Binary reward")
+    parser.add_argument("--n_workers", type=int, default=8, help="Number of workers for the rule-based reward model")
 
     parser.add_argument("--port", type=int, default=5000, help="Port number for the server")
     parser.add_argument("--host", type=str, default="0.0.0.0", help="IP for the server")
@@ -291,6 +314,7 @@ if __name__ == "__main__":
         if args.rule == "reward_model":
             rewards = reward_model.get_reward(queries)
         else:
+            print(f"Computing rewards for {len(queries)} queries")
             rewards = await reward_model.get_reward_async(queries)
         result = {"rewards": rewards}
         logger.info(f"Sent JSON: {result}")
