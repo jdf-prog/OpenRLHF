@@ -233,27 +233,28 @@ class RuleBasedRewardModelProxy:
                 }
                 for i, (question_hash, question, response, test_case) in enumerate(zip(question_hashes, questions, responses, test_cases))
             ]
+            ## save samples to a file
+            # temp_dir = "./temp/"
+            # temp_file = temp_dir + f"{hash_string(''.join(queries))}.jsonl"
+            # os.makedirs(temp_dir, exist_ok=True)
+            # with open(temp_file, "w") as f:
+            #     for sample in samples:
+            #         f.write(json.dumps(sample) + "\n")
+            # # python -m openrlhf.cli.eval_test_cases --samples temp_file --n_workers 8 --test_details --output_file output_file
+            # # python -m openrlhf.cli.eval_test_cases --samples /root/dongfu/OpenRLHF/temp/a9f6894d094547fb67e2aad4026c4b7c8a8b5889ae79b25ef59c7ef7372cdde3.jsonl --n_workers 8 --test_details --output_file /root/dongfu/OpenRLHF/temp/a9f6894d094547fb67e2aad4026c4b7c8a8b5889ae79b25ef59c7ef7372cdde3.eval_results.jsonl
+            # if not self.binary:
+            #     output_file = Path(temp_file).with_suffix(".eval_results.jsonl").absolute()
+            #     command = f"python -m openrlhf.cli.eval_test_cases --samples {temp_file} --n_workers {self.n_workers} --test_details --output_file {output_file}"
+            # else:
+            #     output_file = Path(temp_file).with_suffix(".eval_results_binary.jsonl")
+            #     command = f"python -m openrlhf.cli.eval_test_cases --samples {temp_file} --n_workers {self.n_workers} --output_file {output_file}"
+            # print(command)
+            # subprocess.run(command, shell=True)
+            # with open(output_file, "r") as f:
+            #     all_samples_results = [json.loads(x) for x in f]
+            # pass_rates = [x['pass_rate'] for x in all_samples_results]
             # save samples to a file
-            temp_dir = "./temp/"
-            temp_file = temp_dir + f"{hash_string(''.join(queries))}.jsonl"
-            os.makedirs(temp_dir, exist_ok=True)
-            with open(temp_file, "w") as f:
-                for sample in samples:
-                    f.write(json.dumps(sample) + "\n")
-            # python -m openrlhf.cli.eval_test_cases --samples temp_file --n_workers 8 --test_details --output_file output_file
-            # python -m openrlhf.cli.eval_test_cases --samples /root/dongfu/OpenRLHF/temp/a9f6894d094547fb67e2aad4026c4b7c8a8b5889ae79b25ef59c7ef7372cdde3.jsonl --n_workers 8 --test_details --output_file /root/dongfu/OpenRLHF/temp/a9f6894d094547fb67e2aad4026c4b7c8a8b5889ae79b25ef59c7ef7372cdde3.eval_results.jsonl
-            if not self.binary:
-                output_file = Path(temp_file).with_suffix(".eval_results.jsonl").absolute()
-                command = f"python -m openrlhf.cli.eval_test_cases --samples {temp_file} --n_workers {self.n_workers} --test_details --output_file {output_file}"
-            else:
-                output_file = Path(temp_file).with_suffix(".eval_results_binary.jsonl")
-                command = f"python -m openrlhf.cli.eval_test_cases --samples {temp_file} --n_workers {self.n_workers} --output_file {output_file}"
-            print(command)
-            subprocess.run(command, shell=True)
-            with open(output_file, "r") as f:
-                all_samples_results = [json.loads(x) for x in f]
-            pass_rates = [x['pass_rate'] for x in all_samples_results]
-            # all_samples_results, pass_rates = evaluate(samples, n_workers=8, test_details=not self.binary)
+            all_samples_results, pass_rates = evaluate(samples, n_workers=self.n_workers, test_details=not self.binary)
             scores = pass_rates
             if self.binary:
                 scores = [1 if x == 1 else 0 for x in scores] # if binary
