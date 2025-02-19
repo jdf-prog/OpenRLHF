@@ -1,1 +1,1 @@
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 ray start --head --num-gpus 8 --num-cpus 32
+CUDA_VISIBLE_DEVICES=1,2,3,5,6,7 ray start --head --num-gpus 6 --num-cpus 16
