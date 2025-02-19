@@ -114,8 +114,9 @@ class Qwen2ForCausalRM(Qwen2ForCausalLM):
 
 
 def main(
-    lf_rm_model_path="CodeDPO/qwen_coder_2.5_rm",
-    openrlhf_rm_model_path="CodeDPO/qwen_coder_2.5_rm_openrlhf",
+    lf_rm_model_path="TIGER-Lab/AceCodeRM-7B",
+    openrlhf_rm_model_path="./models/AceCodeRM-7B-openrlhf",
+    push_to_hub=False
 ):
     
     model = Qwen2ForCausalRM.from_pretrained(lf_rm_model_path, device_map="cuda:0").eval()
@@ -135,8 +136,15 @@ def main(
         device_map="cuda:1"
     )
     openrlhf_rmmodel.score.load_state_dict(model.v_head.summary.state_dict())
-    openrlhf_rmmodel.push_to_hub(openrlhf_rm_model_path)
+    if push_to_hub:
+        openrlhf_rmmodel.push_to_hub(openrlhf_rm_model_path)
+    else:
+        openrlhf_rmmodel.save_pretrained(openrlhf_rm_model_path)
     print(f"Model saved to {openrlhf_rm_model_path}")
     
 if __name__ == "__main__":
     fire.Fire(main)
+
+"""
+python scripts/change_lf_rm_to_openrlhf_rm.py --lf_rm_model_path "TIGER-Lab/AceCodeRM-7B" --openrlhf_rm_model_path "./models/AceCodeRM-7B-openrlhf"
+"""

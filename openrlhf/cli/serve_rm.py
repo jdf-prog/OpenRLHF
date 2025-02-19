@@ -7,6 +7,8 @@ import uvicorn
 import hashlib
 import datasets
 import subprocess
+import regex as re
+import numpy as np
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from tqdm import tqdm
@@ -167,6 +169,10 @@ class RuleBasedRewardModelProxy:
         self.gt_key = args.gt_key
         self.binary = args.binary
         self.n_workers = args.n_workers
+        assert self.rule in ["test_case", "exact_match", "code_format_reward"]
+        if self.rule == "test_case":    
+            from acecoder import evaluate_test_cases
+
         dataset_questions = []
         for conversation in self.dataset['context_messages']:
             idx = 0
@@ -177,9 +183,7 @@ class RuleBasedRewardModelProxy:
         self.hash_map = {
             hash_string(q): item for q, item in zip(dataset_questions, self.dataset)
         }
-        assert self.rule in ["test_case", "exact_match"]
-        if self.rule == "test_case":    
-            from .eval_test_cases import evaluate
+        
     
     async def get_reward_async(self, queries: List[str]) -> List[float]:
         # If get_reward is CPU-bound, run it in a thread pool
@@ -204,7 +208,7 @@ class RuleBasedRewardModelProxy:
         
         scores = []
         if self.rule == "test_case":
-            from .eval_test_cases import evaluate
+            from acecoder import evaluate_test_cases
             questions = []
             responses = []
             for conversation in conversations:
@@ -254,10 +258,41 @@ class RuleBasedRewardModelProxy:
             #     all_samples_results = [json.loads(x) for x in f]
             # pass_rates = [x['pass_rate'] for x in all_samples_results]
             # save samples to a file
-            all_samples_results, pass_rates = evaluate(samples, n_workers=self.n_workers, test_details=not self.binary)
+            all_samples_results, pass_rates = evaluate_test_cases(samples, n_workers=self.n_workers, test_details=not self.binary, min_time_limit=1, gt_time_limit_factor=1)
             scores = pass_rates
             if self.binary:
                 scores = [1 if x == 1 else 0 for x in scores] # if binary
+        elif self.rule == "code_format_reward":
+            questions = []
+            responses = []
+            for conversation in conversations:
+                idx = 0
+                while conversation[idx]['role'] != "user":
+                    idx += 1
+                questions.append(conversation[idx]['content'])
+                responses.append(conversation[idx + 1]['content'])
+            question_hashes = [hash_string(question) for question in questions]
+            
+            
+            
+            # Format Reward 1: force <think> ... </think> <answer> ... </answer> format
+            scores_1 = [int(re.match(r"<think>(.|\n)*?</think>\s*<answer>(.|\n)*?</answer>", response.strip(' \n')) is not None) for response in responses]
+            
+            # Format Reward 2: encourage the include of coding in the thinking process
+            extracted_thinks = [re.search(r"<think>(.|\n)*?</think>", response) for response in responses]
+            extracted_thinks = [x.group() if x is not None else None for x in extracted_thinks]
+            scores_2 = [re.findall(r"```.*\n(.|\n)*?\n```", think) if think is not None else [] for think in extracted_thinks]
+            scores_2 = [len(x) for x in scores_2]
+            scores_2 = [np.tanh(x) for x in scores_2]
+            
+            # Format Reward 3: There should be a code block in the answer
+            extracted_answers = [re.search(r"<answer>(.|\n)*?</answer>", response) for response in responses]
+            extracted_answers = [x.group() if x is not None else None for x in extracted_answers]
+            scores_3 = [int(re.match(r"```.*\n(.|\n)*?\n```", answer) is not None) if answer is not None else 0 for answer in extracted_answers]
+            
+            # Combine the scores    
+            scores = [0.5 * x + 0.25 * y + 0.25 * z for x, y, z in zip(scores_1, scores_2, scores_3)]
+            
         elif self.rule == "exact_match":
             raise NotImplementedError
 
