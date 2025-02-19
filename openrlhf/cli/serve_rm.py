@@ -2,6 +2,7 @@ import argparse
 import re
 import os
 import json
+import time
 import torch
 import uvicorn
 import hashlib
@@ -169,6 +170,8 @@ class RuleBasedRewardModelProxy:
         self.gt_key = args.gt_key
         self.binary = args.binary
         self.n_workers = args.n_workers
+        self.step_idx = 0
+        self.last_request_time = None
         assert self.rule in ["test_case", "exact_match", "code_format_reward"]
         if self.rule == "test_case":    
             from acecoder import evaluate_test_cases
@@ -247,18 +250,22 @@ class RuleBasedRewardModelProxy:
             ]
             ## save samples to a file
             temp_dir = "./temp/"
-            temp_file = temp_dir + f"{hash_string(''.join(queries))}.jsonl"
+            temp_file = temp_dir + f"step-{self.step_idx}_{hash_string(''.join(queries))}.jsonl"
+            if self.last_request_time is not None:
+                # increase step if the last request is 180 seconds ago
+                if time.time() - self.last_request_time > 180:
+                    self.step_idx += 1
+            self.last_request_time = time.time()
             os.makedirs(temp_dir, exist_ok=True)
             with open(temp_file, "w") as f:
                 for sample in samples:
                     f.write(json.dumps(sample) + "\n")
             # python -m openrlhf.cli.eval_test_cases --samples temp_file --n_workers 8 --test_details --output_file output_file
             # python -m openrlhf.cli.eval_test_cases --samples /root/dongfu/OpenRLHF/temp/a9f6894d094547fb67e2aad4026c4b7c8a8b5889ae79b25ef59c7ef7372cdde3.jsonl --n_workers 8 --test_details --output_file /root/dongfu/OpenRLHF/temp/a9f6894d094547fb67e2aad4026c4b7c8a8b5889ae79b25ef59c7ef7372cdde3.eval_results.jsonl
-            command = f"python -m acecoder.eval_test_cases --samples {temp_file} --n_workers {self.n_workers} --extract_solution False"
             output_file = Path(temp_file).with_suffix(f".eval_results{'_binary' if self.binary else ''}.jsonl").absolute()
-            command += f" --output_file {output_file}"
-            if not self.binary:
-                command += " --test_details"
+            command = f"python -m acecoder.eval_test_cases --samples {temp_file} --n_workers {self.n_workers} \
+                --extract_solution False --output_file {output_file} --test_details {not self.binary} \
+                --i_just_wanna_run True"
             print(command)
             subprocess.run(command, shell=True)
             with open(output_file, "r") as f:
