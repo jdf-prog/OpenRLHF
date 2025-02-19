@@ -75,4 +75,5 @@ if __name__ == "__main__":
 python scripts/format_code_rl_data.py --dataset_path "CodeDPO/codedpo_20241208" --output_path "CodeDPO/codedpo_20241208_openrlhf_format" --only_keep_hard_examples True
 python scripts/format_code_rl_data.py --dataset_path "CodeDPO/rlhf_dataset_20250126" --output_path "CodeDPO/rlhf_dataset_20250126_openrlhf_format" --only_keep_hard_examples True
 python scripts/format_code_rl_data.py --dataset_path "CodeDPO/rlhf_dataset_20250126" --output_path "CodeDPO/rlhf_dataset_20250126_openrlhf_format" --only_keep_hard_examples True --add_r1_system_prompt True
+python scripts/format_code_rl_data.py --dataset_path "CodeDPO/AceCoderV2-mini-processed" --output_path "CodeDPO/AceCoderV2-mini-processed_openrlhf_format" --only_keep_hard_examples False --add_r1_system_prompt True
 """
