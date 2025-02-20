@@ -231,22 +231,23 @@ class RuleBasedRewardModelProxy:
             assert all([x in self.hash_map for x in question_hashes]), "Not all questions are in the dataset"
             test_cases = [self.hash_map[x][self.gt_key] for x in question_hashes]
             
-            extracted_answers = [re.search(r"<answer>(.|\n)*?</answer>", response) for response in responses]
-            extracted_answers = [x.group() if x is not None else None for x in extracted_answers]
-            # ```.*\n(.|\n)*?\n``` is the regex for code block
-            extracted_solutions = [re.findall(r"```.*\n(.|\n)*?\n```", answer) if answer is not None else [] for answer in extracted_answers]
-            extracted_solutions = [x[0] if len(x) > 0 else "" for x in extracted_solutions]
+            extracted_answers = [re.sub(r"<think>(.|\n)*?</think>", "", response) for response in responses]
+            # extracted_answers = [re.search(r"<answer>(.|\n)*?</answer>", response) for response in responses]
+            # extracted_answers = [x.group() if x is not None else "" for x in extracted_answers]
+            # # ```.*\n(.|\n)*?\n``` is the regex for code block
+            # extracted_answers = [re.findall(r"```.*\n(.|\n)*?\n```", answer) if answer is not None else [] for answer in extracted_answers]
+            # extracted_answers = [x[0] if len(x) > 0 else "" for x in extracted_answers]
             
             samples = [
                 {
                     'task_id': question_hash,
                     'prompt': question,
-                    'output': output,
+                    'output': answer,
                     'original_response': response,
                     'tests': test_case,
                     '_identifier': f"{question_hash}_{i}"
                 }
-                for i, (question_hash, question, output, test_case, response) in enumerate(zip(question_hashes, questions, extracted_solutions, test_cases, responses))
+                for i, (question_hash, question, answer, test_case, response) in enumerate(zip(question_hashes, questions, extracted_answers, test_cases, responses))
             ]
             ## save samples to a file
             temp_dir = "./temp/"
@@ -264,7 +265,7 @@ class RuleBasedRewardModelProxy:
             # python -m openrlhf.cli.eval_test_cases --samples /root/dongfu/OpenRLHF/temp/a9f6894d094547fb67e2aad4026c4b7c8a8b5889ae79b25ef59c7ef7372cdde3.jsonl --n_workers 8 --test_details --output_file /root/dongfu/OpenRLHF/temp/a9f6894d094547fb67e2aad4026c4b7c8a8b5889ae79b25ef59c7ef7372cdde3.eval_results.jsonl
             output_file = Path(temp_file).with_suffix(f".eval_results{'_binary' if self.binary else ''}.jsonl").absolute()
             command = f"python -m acecoder.eval_test_cases --samples {temp_file} --n_workers {self.n_workers} \
-                --extract_solution False --output_file {output_file} --test_details {not self.binary} \
+                --extract_solution True --output_file {output_file} --test_details {not self.binary} \
                 --i_just_wanna_run True"
             print(command)
             subprocess.run(command, shell=True)
@@ -290,7 +291,8 @@ class RuleBasedRewardModelProxy:
             
             
             # Format Reward 1: force <think> ... </think> <answer> ... </answer> format
-            scores_1 = [int(re.match(r"<think>(.|\n)*?</think>\s*<answer>(.|\n)*?</answer>", response.strip(' \n')) is not None) for response in responses]
+            # scores_1 = [int(re.match(r"<think>(.|\n)*?</think>\s*<answer>(.|\n)*?</answer>", response.strip(' \n')) is not None) for response in responses]
+            scores_1 = [int(re.search(r"^<think>(.|\n)*?</think>", response.strip(' \n')) is not None) for response in responses]
             
             # Format Reward 2: encourage the include of coding in the thinking process
             extracted_thinks = [re.search(r"<think>(.|\n)*?</think>", response) for response in responses]
