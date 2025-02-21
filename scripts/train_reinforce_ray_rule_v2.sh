@@ -71,10 +71,10 @@ ray job submit --address="http://127.0.0.1:8265" \
    --reward_pretrain CodeDPO/qwen_coder_2.5_rm_openrlhf \
    --value_head_prefix "score" \
    --save_path $working_dir/saves/checkpoint/$save_name \
-   --micro_train_batch_size 8 \
+   --micro_train_batch_size 4 \
    --train_batch_size 128 \
    --micro_rollout_batch_size 8 \
-   --rollout_batch_size 64 \
+   --rollout_batch_size 256 \
    --n_samples_per_prompt 8 \
    --max_epochs 1 \
    --prompt_max_len 2048 \
