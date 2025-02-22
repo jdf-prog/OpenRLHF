@@ -186,26 +186,30 @@ class NaiveExperienceMaker(ABC):
         return {k: v.to(device) for k, v in batch.items()}
     
     
-    def get_experience(self, samples_list: List[Samples]) -> List[Experience]:
+    def get_experience(self, samples: List[Samples]) -> List[Experience]:
         print("Start getting experience")
         experiences = []
-        for samples in tqdm(
-            samples_list,
+        for sample in tqdm(
+            samples,
             desc="make_experience",
             disable=not self.strategy.is_rank_0(),
         ):
-            experiences.append(self.make_experience(samples).to_device("cpu"))
+            experiences.append(self.make_experience(sample).to_device("cpu"))
         print("Finish getting experience")
         return experiences
 
-    def get_remote_rewards(self, samples_list: List[Samples]) -> List[Experience]:
+    def get_remote_rewards(self, samples: List[Samples]) -> List[Experience]:
         if self.remote_rm_url is not None:
             all_rewards = []
-            all_sequences = torch.cat([samples.sequences for samples in samples_list])
+            all_sequences = torch.cat([sample.sequences for sample in samples])
             queries = self.tokenizer.batch_decode(all_sequences.cpu(), skip_special_tokens=False)
+            prompts = sum([sample.prompts for sample in samples], [])
+            labels = sum([sample.labels for sample in samples], [])
             for rm_url in self.remote_rm_url:
                 if rm_url.startswith("rule:"):
-                    all_rewards.append(remote_rm_fn(rm_url[len("rule:"):], queries=queries))
+                    all_rewards.append(remote_rm_fn(
+                        rm_url[len("rule:"):], queries=queries, prompts=prompts, labels=labels
+                    ))
         return None
 
     @torch.no_grad()
@@ -574,25 +578,27 @@ class RemoteExperienceMaker(NaiveExperienceMaker):
                 self._ref = self.critic.append.remote(experience_cpu)
         return experiences
     
-    def get_remote_rewards(self, samples_list: List[Samples]):
+    def get_remote_rewards(self, samples: List[Samples]):
         print("Start getting remote rewards")
         if self.packing_samples:
             all_sequences = []
-            for samples in samples_list:
-                sequences = unpacking_samples(samples.sequences, samples.packed_seq_lens)
+            for sample in samples:
+                sequences = unpacking_samples(sample.sequences, sample.packed_seq_lens)
                 all_sequences.extend(sequences)
         else:
             # get rewards all together
-            all_sequences = torch.cat([samples.sequences for samples in samples_list])
+            all_sequences = torch.cat([sample.sequences for sample in samples])
         # remote RM
         queries = self.tokenizer.batch_decode(all_sequences, skip_special_tokens=False)
+        prompts = sum([sample.prompts for sample in samples], [])
+        labels = sum([sample.labels for sample in samples], [])
         all_remote_rewards = []
         for i, rm in enumerate(self.remote_rm_url):
             if not rm.startswith("rule:"):
                 continue
             # r = remote_rm_fn(self.remote_rm_url, queries=queries).to(device=action_log_probs.device)
             remote_rm_url = rm[len("rule:"):]
-            remote_rewards = remote_rm_fn(remote_rm_url, queries=queries)
+            remote_rewards = remote_rm_fn(remote_rm_url, queries=queries, prompts=prompts, labels=labels)
             all_remote_rewards.append(remote_rewards)
         print("Finish getting remote rewards")
         return all_remote_rewards

@@ -200,7 +200,8 @@ class RuleBasedRewardModelProxy:
         return await loop.run_in_executor(
             thread_pool, 
             self.get_reward,
-            queries
+            queries,
+            prompts
         )
             
     def get_reward(self, queries, prompts):
@@ -291,13 +292,15 @@ class RuleBasedRewardModelProxy:
                 sample_result['original_response'] = samples[i]['original_response']
                 sample_result['question'] = samples[i]['prompt']
                 sample_result['id'] = self.hash_map[samples[i]['task_id']]['id']
-            sampled_results = random.sample(all_samples_results, 100)
-            sampled_output_file = Path(temp_file).with_suffix(f".100_samples.json").absolute()
+            num_samples = min(100, len(all_samples_results))
+            sampled_results = random.sample(all_samples_results, num_samples)
+            sampled_output_file = Path(temp_file).with_suffix(f".{num_samples}_samples.json").absolute()
             with open(sampled_output_file, "w") as f:
                 json.dump(sampled_results, f, indent=4)
             # save samples to a file
             # all_samples_results, pass_rates = evaluate_test_cases(samples, n_workers=self.n_workers, test_details=not self.binary, min_time_limit=1, gt_time_limit_factor=1)
             scores = pass_rates
+            print(f"Pass all test cases rate: {np.mean([x == 1 for x in scores]) * 100:.2f}%")
             if self.binary:
                 scores = [1 if x == 1 else 0 for x in scores] # if binary
         elif self.rule == "code_format_reward":

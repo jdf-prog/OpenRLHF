@@ -149,6 +149,7 @@ class ActorPPOTrainer(PPOTrainer):
                     if torch.distributed.get_rank() == 0:
                         refs = []
                         for engine in self.vllm_engines:
+                            print(f"Wake up vLLM {engine}")
                             refs.append(engine.wake_up.remote())
                         ray.get(refs)
                 torch.distributed.barrier()

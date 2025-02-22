@@ -8,13 +8,13 @@ policy_pretrain="Qwen/Qwen2.5-Coder-7B-Instruct"
 # dataset="CodeDPO/codedpo_20241208_openrlhf_format_hard" # old dataset where test cases are not filterd by Qwen2.5-Coder-32B
 dataset="CodeDPO/AceCoderV2-mini-processed_openrlhf_format_r1" # new dataset where test cases are filterd by Qwen2.5-Coder-32B
 rm_port=14236
-remote_rm_url="http://localhost:$rm_port/get_reward"
+remote_rm_url="rule:http://localhost:$rm_port/get_reward"
 reward_log_file="logs/reward.log"
 rm_format_port=14237
-remote_rm_format_url="http://localhost:$rm_format_port/get_reward"
+remote_rm_format_url="rule:http://localhost:$rm_format_port/get_reward"
 reward_format_log_file="logs/reward_format.log"
 # save_name="qwen25-ins-7b-coderm-7b-reinforce++"
-save_name="qwen25-coder-inst-7b--reinforce++_v2_mini_processed_r1"
+save_name="qwen25-coder-inst-7b--reinforce++_v2_mini_processed_r1_debug"
 mkdir -p logs
 
 all_remote_rm_urls="$remote_rm_url,$remote_rm_format_url"
@@ -79,17 +79,16 @@ ray job submit --address="http://127.0.0.1:8265" \
    --reward_num_gpus_per_node 0 \
    --actor_num_nodes 1 \
    --actor_num_gpus_per_node 4 \
-   --colocate_actor_ref \
    --vllm_num_engines 2 \
    --vllm_tensor_parallel_size 2 \
    --pretrain $policy_pretrain \
-   --reward_pretrain CodeDPO/qwen_coder_2.5_rm_openrlhf \
-   --value_head_prefix "score" \
+   --remote_rm_url $all_remote_rm_urls \
+   --colocate_actor_ref \
    --save_path $save_path \
    --micro_train_batch_size 4 \
    --train_batch_size 128 \
    --micro_rollout_batch_size 8 \
-   --rollout_batch_size 256 \
+   --rollout_batch_size 64 \
    --n_samples_per_prompt 8 \
    --max_epochs 1 \
    --prompt_max_len 2048 \
@@ -111,11 +110,16 @@ ray job submit --address="http://127.0.0.1:8265" \
    --ckpt_path $working_dir/saves/ckpt/$save_name \
    --flash_attn \
    --use_wandb $WANDB_API_KEY \
-   --remote_rm_url $all_remote_rm_urls \
    --wandb_run_name $save_name \
    $training_post_args
 
-   # --normalize_reward \
+
+# --colocate_actor_ref \
+# --colocate_all_models \
+# --vllm_enable_sleep \
+#    --vllm_gpu_memory_utilization 0.5 \
+
+# --normalize_reward \
 # also supports --advantage_estimator rloo
 
 pkill -P -9 $PID_RM
