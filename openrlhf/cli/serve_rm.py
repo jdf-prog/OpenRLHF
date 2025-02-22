@@ -288,6 +288,10 @@ class RuleBasedRewardModelProxy:
             os.remove(temp_file)
             os.remove(output_file)
             # save random 100 samples into a file for debugging
+            for i, sample_result in enumerate(all_samples_results):
+                sample_result['original_response'] = samples[i]['original_response']
+                sample_result['question'] = samples[i]['prompt']
+                sample_result['id'] = self.hash_map[samples[i]['task_id']]['id']
             sampled_results = random.sample(all_samples_results, 100)
             sampled_output_file = Path(temp_file).with_suffix(f".100_samples.json").absolute()
             with open(sampled_output_file, "w") as f:
