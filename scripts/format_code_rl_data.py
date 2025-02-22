@@ -2,6 +2,7 @@
 import fire
 import datasets
 import numpy as np
+from transformers import AutoTokenizer
 
 r1_system_prompt = """\
 A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think> <answer> answer here </answer>.
@@ -10,10 +11,21 @@ def main(
     dataset_path="CodeDPO/codedpo_20241208",
     output_path="CodeDPO/codedpo_20241208_openrlhf_format",
     only_keep_hard_examples=True,
-    add_r1_system_prompt=False
+    add_r1_system_prompt=False,
+    max_prompt_length=2000,
 ):
     dataset = datasets.load_dataset(dataset_path, split="train")   
     print(f"Loaded {len(dataset)} examples")
+    
+    tokenizer = AutoTokenizer.from_pretrained('Qwen/Qwen2.5-Coder-7B-Instruct')
+    def filter_long_prompt(item):
+        # this is important as openrlhf will chunk the prompt len and if the prompt is longer, then there will be some problem when computing the rewards.
+        if len(tokenizer.encode(item['question'])) > max_prompt_length:
+            return False
+        return True
+    new_dataset = dataset.filter(filter_long_prompt, desc="Filtering long prompts")
+    print(f"Filtered out {len(dataset) - len(new_dataset)} examples where the prompt is longer than {max_prompt_length} tokens")
+    dataset = new_dataset
     
     def map_openrlhf_format(item):
         item['context_messages'] = [

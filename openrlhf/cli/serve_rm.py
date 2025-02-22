@@ -10,6 +10,7 @@ import datasets
 import subprocess
 import regex as re
 import numpy as np
+import random
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from tqdm import tqdm
@@ -67,7 +68,7 @@ def parse_conversation_from_llama3_prompt(prompt):
         prompt = prompt[end_idx + len(end_conv_token):]
     return conversation    
 
-def parse_conversation_from_qwen2vl_prompt(prompt):
+def parse_conversation_from_qwen2_prompt(prompt):
     # system\nuser\n...assistant\n...
     start_conv_token = "<|im_start|>"
     end_conv_token = "<|im_end|>"
@@ -108,7 +109,7 @@ class RewardModelProxy:
         self.policy_tokenizer = AutoTokenizer.from_pretrained(args.policy_pretrain, trust_remote_code=True, use_fast=not args.disable_fast_tokenizer)
         self.max_length = args.max_len
         self.batch_size = args.batch_size
-        self.parse_conv_fn = parse_conversation_from_llama3_prompt if "llama3" in args.policy_pretrain else parse_conversation_from_qwen2vl_prompt
+        self.parse_conv_fn = parse_conversation_from_llama3_prompt if "llama3" in args.policy_pretrain else parse_conversation_from_qwen2_prompt
 
     def get_reward(self, queries):
         if self.batch_size is None:
@@ -162,7 +163,7 @@ class RuleBasedRewardModelProxy:
         self.policy_tokenizer = AutoTokenizer.from_pretrained(args.policy_pretrain, trust_remote_code=True, use_fast=not args.disable_fast_tokenizer)
         self.max_length = args.max_len
         self.batch_size = args.batch_size
-        self.parse_conv_fn = parse_conversation_from_llama3_prompt if "llama3" in args.policy_pretrain else parse_conversation_from_qwen2vl_prompt
+        self.parse_conv_fn = parse_conversation_from_llama3_prompt if "llama3" in args.policy_pretrain else parse_conversation_from_qwen2_prompt
         self.rule = args.rule
         self.dataset_name = args.dataset
         self.dataset = datasets.load_dataset(args.dataset, split="train")
@@ -170,11 +171,17 @@ class RuleBasedRewardModelProxy:
         self.gt_key = args.gt_key
         self.binary = args.binary
         self.n_workers = args.n_workers
-        self.step_idx = 0
+        self.step_idx = int(args.start_step_idx) if args.start_step_idx is not None else 0
+        if self.step_idx != 0:
+            print(f"Starting from step {self.step_idx}")
         self.last_request_time = None
+        self.record_dir = args.record_dir if args.record_dir is not None else "./rm_records"
         assert self.rule in ["test_case", "exact_match", "code_format_reward"]
-        if self.rule == "test_case":    
-            from acecoder import evaluate_test_cases
+        if self.rule == "test_case":
+            try:
+                from acecoder import evaluate_test_cases
+            except ImportError:
+                raise ImportError("`from acecoder import evaluate_test_cases` failed, please install acecoder to use test_case rule")
 
         dataset_questions = []
         for conversation in self.dataset['context_messages']:
@@ -219,13 +226,17 @@ class RuleBasedRewardModelProxy:
                 while conversation[idx]['role'] != "user":
                     idx += 1
                 questions.append(conversation[idx]['content'])
-                responses.append(conversation[idx + 1]['content'])
+                try:
+                    responses.append(conversation[idx + 1]['content'])
+                except:
+                    responses.append("")
             question_hashes = [hash_string(question) for question in questions]
             if not all([x in self.hash_map for x in question_hashes]):
                 torch.save(question_hashes, "question_hashes.pt")
                 torch.save(conversations, "conversations.pt")
                 torch.save(questions, "questions.pt")
                 torch.save(responses, "responses.pt")
+                torch.save(queries, "queries.pt")
                 torch.save(self.hash_map, "hash_map.pt")
                 raise Exception("Not all questions are in the dataset")
             assert all([x in self.hash_map for x in question_hashes]), "Not all questions are in the dataset"
@@ -250,7 +261,7 @@ class RuleBasedRewardModelProxy:
                 for i, (question_hash, question, answer, test_case, response) in enumerate(zip(question_hashes, questions, extracted_answers, test_cases, responses))
             ]
             ## save samples to a file
-            temp_dir = "./temp/"
+            temp_dir = self.record_dir + "/"
             temp_file = temp_dir + f"step-{self.step_idx}_{hash_string(''.join(queries))}.jsonl"
             if self.last_request_time is not None:
                 # increase step if the last request is 180 seconds ago
@@ -272,6 +283,15 @@ class RuleBasedRewardModelProxy:
             with open(output_file, "r") as f:
                 all_samples_results = [json.loads(x) for x in f]
             pass_rates = [x['eval_results']['pass_rate'] for x in all_samples_results]
+            
+            # remove temp_file
+            os.remove(temp_file)
+            os.remove(output_file)
+            # save random 100 samples into a file for debugging
+            sampled_results = random.sample(all_samples_results, 100)
+            sampled_output_file = Path(temp_file).with_suffix(f".100_samples.json").absolute()
+            with open(sampled_output_file, "w") as f:
+                json.dump(sampled_results, f, indent=4)
             # save samples to a file
             # all_samples_results, pass_rates = evaluate_test_cases(samples, n_workers=self.n_workers, test_details=not self.binary, min_time_limit=1, gt_time_limit_factor=1)
             scores = pass_rates
@@ -285,7 +305,10 @@ class RuleBasedRewardModelProxy:
                 while conversation[idx]['role'] != "user":
                     idx += 1
                 questions.append(conversation[idx]['content'])
-                responses.append(conversation[idx + 1]['content'])
+                try:
+                    responses.append(conversation[idx + 1]['content'])
+                except:
+                    responses.append("")
             question_hashes = [hash_string(question) for question in questions]
             
             
@@ -308,6 +331,10 @@ class RuleBasedRewardModelProxy:
             
             # Combine the scores    
             scores = [0.5 * x + 0.25 * y + 0.25 * z for x, y, z in zip(scores_1, scores_2, scores_3)]
+            print("Average scores_1: ", np.mean(scores_1))
+            print("Average scores_2: ", np.mean(scores_2))
+            print("Average scores_3: ", np.mean(scores_3))
+            print("Average weighted scores: ", np.mean(scores))
             
         elif self.rule == "exact_match":
             raise NotImplementedError
@@ -339,6 +366,9 @@ if __name__ == "__main__":
     parser.add_argument("--gt_key", type=str, default="tests", help="Key used for rule-based reward model that compares with the output to get the reward")
     parser.add_argument("--binary", action="store_true", default=False, help="Binary reward")
     parser.add_argument("--n_workers", type=int, default=8, help="Number of workers for the rule-based reward model")
+    parser.add_argument("--record_dir", type=str, default=None, help="Directory to save the records")
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--start_step_idx", type=int, default=0)
 
     parser.add_argument("--port", type=int, default=5000, help="Port number for the server")
     parser.add_argument("--host", type=str, default="0.0.0.0", help="IP for the server")
@@ -352,6 +382,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    np.random.seed(args.seed)
+    random.seed(args.seed)
     # server
     if args.rule == "reward_model":
         reward_model = RewardModelProxy(args)
