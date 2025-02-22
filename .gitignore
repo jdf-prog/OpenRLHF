@@ -149,3 +149,11 @@ core
 *jianh*
 *test_scripts*
 */checkpoint/*
+
+/test*
+/*.jsonl
+/data
+/wandb
+/checkpoint
+/temp
+/rm_records
