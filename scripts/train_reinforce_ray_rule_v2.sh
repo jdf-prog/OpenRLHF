@@ -71,7 +71,7 @@ PID_RM2=$!
 # echo "start training"
 # echo "see logs/train.log for training logs"
 ray job submit --address="http://127.0.0.1:8265" \
-   --runtime-env-json='{"working_dir": "'$working_dir'"}' \
+   --runtime-env-json='{"working_dir": "'$working_dir'", "excludes": ["saves", "rm_records", "logs"]}' \
    -- python3 -m openrlhf.cli.train_ppo_ray \
    --ref_num_nodes 1 \
    --ref_num_gpus_per_node 4 \
@@ -83,8 +83,6 @@ ray job submit --address="http://127.0.0.1:8265" \
    --vllm_num_engines 2 \
    --vllm_tensor_parallel_size 2 \
    --pretrain $policy_pretrain \
-   --reward_pretrain CodeDPO/qwen_coder_2.5_rm_openrlhf \
-   --value_head_prefix "score" \
    --save_path $save_path \
    --micro_train_batch_size 4 \
    --train_batch_size 128 \
