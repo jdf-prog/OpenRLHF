@@ -3,7 +3,8 @@ ray start --head --num-gpus 8 --num-cpus 64
 working_dir=$PWD
 # reinforce++
 
-policy_pretrain="Qwen/Qwen2.5-Coder-7B-Instruct"
+# policy_pretrain="Qwen/Qwen2.5-Coder-7B-Instruct"
+policy_pretrain="/data/dongfu/AceCoder/train/train_rl/OpenRLHF/checkpoint/cold_start_sft"
 # policy_pretrain="Qwen/Qwen2.5-7B-Instruct"
 # dataset="CodeDPO/codedpo_20241208_openrlhf_format_hard" # old dataset where test cases are not filterd by Qwen2.5-Coder-32B
 dataset="CodeDPO/AceCoderV2-mini-processed_openrlhf_format_r1" # new dataset where test cases are filterd by Qwen2.5-Coder-32B
@@ -14,13 +15,14 @@ rm_format_port=14237
 remote_rm_format_url="rule:http://localhost:$rm_format_port/get_reward"
 reward_format_log_file="logs/reward_format.log"
 # save_name="qwen25-ins-7b-coderm-7b-reinforce++"
-save_name="qwen25-coder-inst-7b--reinforce++_v2_mini_processed_r1"
+save_name="qwen25-coder-inst-7b--reinforce++_v2_mini_processed_r1_cold_start"
 mkdir -p logs
-
+record_dir="rm_records/$save_name"
+mkdir -p $record_dir
 all_remote_rm_urls="rule:http://localhost:$rm_port/get_reward,rule:http://localhost:$rm_format_port/get_reward"
 
 binary_reward=False # whether to map rewards to 1 or 0 by "1 if reward==1 else 0"
-post_args=""
+post_args="--record_dir $record_dir"
 training_post_args=""
 if [ $binary_reward = True ]; then
    post_args="--binary "
@@ -84,7 +86,7 @@ ray job submit --address="http://127.0.0.1:8265" \
    --vllm_tensor_parallel_size 2 \
    --pretrain $policy_pretrain \
    --save_path $save_path \
-   --micro_train_batch_size 4 \
+   --micro_train_batch_size 2 \
    --train_batch_size 128 \
    --micro_rollout_batch_size 8 \
    --rollout_batch_size 256 \

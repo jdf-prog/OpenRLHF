@@ -292,8 +292,9 @@ class RuleBasedRewardModelProxy:
                 sample_result['original_response'] = samples[i]['original_response']
                 sample_result['question'] = samples[i]['prompt']
                 sample_result['id'] = self.hash_map[samples[i]['task_id']]['id']
-            sampled_results = random.sample(all_samples_results, 100)
-            sampled_output_file = Path(temp_file).with_suffix(f".100_samples.json").absolute()
+            num_samples = min(100, len(all_samples_results))
+            sampled_results = random.sample(all_samples_results, num_samples)
+            sampled_output_file = Path(temp_file).with_suffix(f".{num_samples}_samples.json").absolute()
             with open(sampled_output_file, "w") as f:
                 json.dump(sampled_results, f, indent=4)
             # save samples to a file
@@ -301,6 +302,7 @@ class RuleBasedRewardModelProxy:
             scores = pass_rates
             if self.binary:
                 scores = [1 if x == 1 else 0 for x in scores] # if binary
+            scores = [x + 0.5 if x == 1 else x for x in scores] # additional reward for passing all test cases
         elif self.rule == "code_format_reward":
             questions = []
             responses = []
