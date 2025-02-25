@@ -4,7 +4,7 @@ working_dir=$PWD
 # reinforce++
 
 # policy_pretrain="Qwen/Qwen2.5-Coder-7B-Instruct"
-policy_pretrain="/data/dongfu/AceCoder/train/train_rl/OpenRLHF/checkpoint/cold_start_sft"
+policy_pretrain="CodeDPO/qwen2.5-coder-inst-cold-start-R1"
 # policy_pretrain="Qwen/Qwen2.5-7B-Instruct"
 # dataset="CodeDPO/codedpo_20241208_openrlhf_format_hard" # old dataset where test cases are not filterd by Qwen2.5-Coder-32B
 dataset="CodeDPO/AceCoderV2-mini-processed_openrlhf_format_r1" # new dataset where test cases are filterd by Qwen2.5-Coder-32B
@@ -86,16 +86,16 @@ ray job submit --address="http://127.0.0.1:8265" \
    --vllm_tensor_parallel_size 2 \
    --pretrain $policy_pretrain \
    --save_path $save_path \
-   --micro_train_batch_size 2 \
+   --micro_train_batch_size 1 \
    --train_batch_size 128 \
-   --micro_rollout_batch_size 8 \
-   --rollout_batch_size 256 \
-   --n_samples_per_prompt 8 \
+   --micro_rollout_batch_size 4 \
+   --rollout_batch_size 1024 \
+   --n_samples_per_prompt 1 \
    --max_epochs 1 \
    --prompt_max_len 2048 \
    --max_samples 1000000 \
    --generate_max_len 4096 \
-   --num_episodes 1 \
+   --num_episodes 2 \
    --advantage_estimator reinforce \
    --zero_stage 3 \
    --bf16 \

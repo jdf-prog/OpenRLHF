@@ -285,8 +285,14 @@ class RuleBasedRewardModelProxy:
             pass_rates = [x['eval_results']['pass_rate'] for x in all_samples_results]
             
             # remove temp_file
-            os.remove(temp_file)
-            os.remove(output_file)
+            try:
+                os.remove(temp_file)
+            except:
+                pass
+            try:
+                os.remove(output_file)
+            except:
+                pass
             # save random 100 samples into a file for debugging
             for i, sample_result in enumerate(all_samples_results):
                 sample_result['original_response'] = samples[i]['original_response']
