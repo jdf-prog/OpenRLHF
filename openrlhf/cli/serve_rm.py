@@ -309,7 +309,7 @@ class RuleBasedRewardModelProxy:
             print(f"Pass all test cases rate: {np.mean([x == 1 for x in scores]) * 100:.2f}%")
             if self.binary:
                 scores = [1 if x == 1 else 0 for x in scores] # if binary x in scores]
-            scores = [x + 0.5 if x == 1 else x for x in scores]
+            scores = [x + 0.5 if x == 1 else x for x in scores] # additional reward for passing all test cases
         elif self.rule == "code_format_reward":
             questions = []
             responses = []
@@ -330,23 +330,17 @@ class RuleBasedRewardModelProxy:
             # scores_1 = [int(re.match(r"<think>(.|\n)*?</think>\s*<answer>(.|\n)*?</answer>", response.strip(' \n')) is not None) for response in responses]
             scores_1 = [int(re.search(r"^<think>(.|\n)*?</think>", response.strip(' \n')) is not None) for response in responses]
             
-            # Format Reward 2: encourage the include of coding in the thinking process
-            extracted_thinks = [re.search(r"<think>(.|\n)*?</think>", response) for response in responses]
-            extracted_thinks = [x.group() if x is not None else None for x in extracted_thinks]
-            scores_2 = [re.findall(r"```.*\n(.|\n)*?\n```", think) if think is not None else [] for think in extracted_thinks]
-            scores_2 = [len(x) for x in scores_2]
-            scores_2 = [np.tanh(x) for x in scores_2]
-            
-            # Format Reward 3: There should be a code block in the answer
-            extracted_answers = [re.search(r"<answer>(.|\n)*?</answer>", response) for response in responses]
-            extracted_answers = [x.group() if x is not None else None for x in extracted_answers]
-            scores_3 = [int(re.match(r"```.*\n(.|\n)*?\n```", answer) is not None) if answer is not None else 0 for answer in extracted_answers]
+            # # Format Reward 2: encourage the include of coding in the thinking process
+            # extracted_thinks = [re.search(r"<think>(.|\n)*?</think>", response) for response in responses]
+            # extracted_thinks = [x.group() if x is not None else None for x in extracted_thinks]
+            # scores_2 = [re.findall(r"```.*\n(.|\n)*?\n```", think) if think is not None else [] for think in extracted_thinks]
+            # scores_2 = [len(x) for x in scores_2]
+            # scores_2 = [np.tanh(x) for x in scores_2]
             
             # Combine the scores    
-            scores = [0.5 * x + 0.25 * y + 0.25 * z for x, y, z in zip(scores_1, scores_2, scores_3)]
+            scores = [x * 0.5 for x in scores_1]
             print("Average scores_1: ", np.mean(scores_1))
-            print("Average scores_2: ", np.mean(scores_2))
-            print("Average scores_3: ", np.mean(scores_3))
+            # print("Average scores_2: ", np.mean(scores_2))
             print("Average weighted scores: ", np.mean(scores))
             
         elif self.rule == "exact_match":
