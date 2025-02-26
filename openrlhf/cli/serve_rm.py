@@ -285,8 +285,14 @@ class RuleBasedRewardModelProxy:
             pass_rates = [x['eval_results']['pass_rate'] for x in all_samples_results]
             
             # remove temp_file
-            os.remove(temp_file)
-            os.remove(output_file)
+            try:
+                os.remove(temp_file)
+            except:
+                pass
+            try:
+                os.remove(output_file)
+            except:
+                pass
             # save random 100 samples into a file for debugging
             for i, sample_result in enumerate(all_samples_results):
                 sample_result['original_response'] = samples[i]['original_response']
@@ -302,7 +308,8 @@ class RuleBasedRewardModelProxy:
             scores = pass_rates
             print(f"Pass all test cases rate: {np.mean([x == 1 for x in scores]) * 100:.2f}%")
             if self.binary:
-                scores = [1 if x == 1 else 0 for x in scores] # if binary
+                scores = [1 if x == 1 else 0 for x in scores] # if binary x in scores]
+            scores = [x + 0.5 if x == 1 else x for x in scores]
         elif self.rule == "code_format_reward":
             questions = []
             responses = []

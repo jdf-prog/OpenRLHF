@@ -1,9 +1,10 @@
 set -x
-ray start --head --num-gpus 8 --num-cpus 64
+ray start --head --num-gpus 8 --num-cpus 64 --node-ip-address 0.0.0.0
 working_dir=$PWD
 # reinforce++
 
-policy_pretrain="Qwen/Qwen2.5-Coder-7B-Instruct"
+# policy_pretrain="Qwen/Qwen2.5-Coder-7B-Instruct"
+policy_pretrain="CodeDPO/qwen2.5-coder-inst-cold-start-R1"
 # policy_pretrain="Qwen/Qwen2.5-7B-Instruct"
 # dataset="CodeDPO/codedpo_20241208_openrlhf_format_hard" # old dataset where test cases are not filterd by Qwen2.5-Coder-32B
 dataset="CodeDPO/AceCoderV2-mini-processed_openrlhf_format_r1" # new dataset where test cases are filterd by Qwen2.5-Coder-32B
@@ -14,16 +15,18 @@ rm_format_port=14237
 remote_rm_format_url="rule:http://localhost:$rm_format_port/get_reward"
 reward_format_log_file="logs/reward_format.log"
 # save_name="qwen25-ins-7b-coderm-7b-reinforce++"
-save_name="qwen25-coder-inst-7b--reinforce++_v2_mini_processed_r1_debug"
+save_name="qwen25-coder-inst-7b--reinforce++_v2_mini_processed_r1"
 mkdir -p logs
+record_dir="rm_records/$save_name"
+mkdir -p $record_dirs
 
 all_remote_rm_urls="$remote_rm_url,$remote_rm_format_url"
 
 binary_reward=False # whether to map rewards to 1 or 0 by "1 if reward==1 else 0"
-post_args=""
+post_args="--record_dir $record_dir"
 training_post_args=""
 if [ $binary_reward = True ]; then
-   post_args="--binary "
+   post_args="${post_args} --binary"
    save_name=$save_name"-binary"
 fi
 
@@ -71,30 +74,31 @@ PID_RM2=$!
 # echo "start training"
 # echo "see logs/train.log for training logs"
 ray job submit --address="http://127.0.0.1:8265" \
-   --runtime-env-json='{"working_dir": "'$working_dir'"}' \
+   --runtime-env-json='{"working_dir": "'$working_dir'", "excludes": ["saves", "rm_records", "logs"]}' \
    -- python3 -m openrlhf.cli.train_ppo_ray \
    --ref_num_nodes 1 \
-   --ref_num_gpus_per_node 4 \
+   --ref_num_gpus_per_node 8 \
    --reward_num_nodes 0 \
    --reward_num_gpus_per_node 0 \
    --actor_num_nodes 1 \
-   --actor_num_gpus_per_node 4 \
-   --vllm_num_engines 2 \
+   --actor_num_gpus_per_node 8 \
+   --vllm_num_engines 4 \
    --vllm_tensor_parallel_size 2 \
    --pretrain $policy_pretrain \
    --remote_rm_url $all_remote_rm_urls \
-   --colocate_actor_ref \
+   --colocate_all_models \
+   --vllm_enable_sleep \
    --save_path $save_path \
-   --micro_train_batch_size 4 \
-   --train_batch_size 128 \
-   --micro_rollout_batch_size 8 \
-   --rollout_batch_size 64 \
-   --n_samples_per_prompt 8 \
+   --micro_train_batch_size 1 \
+   --train_batch_size 64 \
+   --micro_rollout_batch_size 2 \
+   --rollout_batch_size 1024 \
+   --n_samples_per_prompt 1 \
    --max_epochs 1 \
    --prompt_max_len 2048 \
    --max_samples 1000000 \
    --generate_max_len 4096 \
-   --num_episodes 1 \
+   --num_episodes 2 \
    --advantage_estimator reinforce \
    --zero_stage 3 \
    --bf16 \
@@ -106,7 +110,7 @@ ray job submit --address="http://127.0.0.1:8265" \
    --adam_offload \
    --gradient_checkpointing \
    --packing_samples \
-   --save_steps 10 \
+   --save_steps 5 \
    --ckpt_path $working_dir/saves/ckpt/$save_name \
    --flash_attn \
    --use_wandb $WANDB_API_KEY \
