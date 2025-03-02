@@ -1,14 +1,31 @@
 import argparse
 import re
-
+import os
+import json
+import time
 import torch
 import uvicorn
+import hashlib
+import datasets
+import subprocess
+import regex as re
+import numpy as np
+import random
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-
+from tqdm import tqdm
+from pathlib import Path
 from openrlhf.models import get_llm_for_sequence_regression
 from openrlhf.utils import get_tokenizer
 from openrlhf.utils.logging_utils import init_logger
+from transformers import AutoTokenizer
+from typing import List
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
+app = FastAPI()
+# Create a thread pool for CPU-bound operations
+thread_pool = ThreadPoolExecutor(max_workers=8)
 
 logger = init_logger(__name__)
 
@@ -24,6 +41,52 @@ def strip_sequence(text, pad_token, eos_token):
     text = re.sub(pattern, "", text)
     return text
 
+def hash_string(s):
+    return hashlib.sha256(s.encode()).hexdigest()
+
+def parse_conversation_from_llama3_prompt(prompt):
+    # system\nuser\n...assistant\n...
+    start_of_header_token = "<|start_header_id|>"
+    end_of_header_token = "<|end_header_id|>\n\n"
+    end_conv_token = "<|eot_id|>"
+    start_idx = 0
+    conversation = []
+    while start_of_header_token in prompt:
+        start_idx = prompt.find(start_of_header_token)
+        role_end_idx = prompt.find(end_of_header_token, start_idx)
+        role = prompt[start_idx + len(start_of_header_token):role_end_idx]
+        role_end_idx += len(end_of_header_token)
+        end_idx = prompt.find(end_conv_token, role_end_idx)
+        content = prompt[role_end_idx:end_idx]
+        conversation.append(
+            {
+                "role": role,
+                "content": content
+            }
+        )
+        prompt = prompt[end_idx + len(end_conv_token):]
+    return conversation    
+
+def parse_conversation_from_qwen2_prompt(prompt):
+    # system\nuser\n...assistant\n...
+    start_conv_token = "<|im_start|>"
+    end_conv_token = "<|im_end|>"
+    start_idx = 0
+    conversation = []
+    while start_conv_token in prompt:
+        start_idx = prompt.find(start_conv_token)
+        role_end_idx = prompt.find("\n", start_idx)
+        role = prompt[start_idx + len(start_conv_token):role_end_idx]
+        end_idx = prompt.find(end_conv_token, role_end_idx)
+        content = prompt[role_end_idx + 1:end_idx]
+        conversation.append(
+            {
+                "role": role,
+                "content": content
+            }
+        )
+        prompt = prompt[end_idx + len(end_conv_token):]
+    return conversation   
 
 class RewardModelProxy:
     def __init__(self, args):
@@ -42,14 +105,25 @@ class RewardModelProxy:
         self.tokenizer = get_tokenizer(
             args.reward_pretrain, self.reward_model, "left", None, use_fast=not args.disable_fast_tokenizer
         )
+        self.policy_tokenizer = AutoTokenizer.from_pretrained(args.policy_pretrain, trust_remote_code=True, use_fast=not args.disable_fast_tokenizer)
         self.max_length = args.max_len
         self.batch_size = args.batch_size
+        self.parse_conv_fn = parse_conversation_from_llama3_prompt if "llama3" in args.policy_pretrain else parse_conversation_from_qwen2_prompt
 
     def get_reward(self, queries, prompts):
         if self.batch_size is None:
             batch_size = len(queries)
         else:
             batch_size = self.batch_size
+        # now, the current queries applied to the chat template of the policy model, we need to recover the original queries into a list of conversations
+        conversations = []
+        for query in queries:
+            conversation = self.parse_conv_fn(query)
+            conversations.append(conversation)
+        queries = []
+        for conversation in conversations:
+            query = self.tokenizer.apply_chat_template(conversation, tokenize=False, add_generation_prompt=False)
+            queries.append(query)
 
         # remove pad_token
         for i in range(len(queries)):
@@ -82,14 +156,225 @@ class RewardModelProxy:
         )
         return {k: v.to(device) for k, v in batch.items()}
 
+class RuleBasedRewardModelProxy:
+    def __init__(self, args):
+        self.policy_tokenizer = AutoTokenizer.from_pretrained(args.policy_pretrain, trust_remote_code=True, use_fast=not args.disable_fast_tokenizer)
+        self.max_length = args.max_len
+        self.batch_size = args.batch_size
+        self.parse_conv_fn = parse_conversation_from_llama3_prompt if "llama3" in args.policy_pretrain else parse_conversation_from_qwen2_prompt
+        self.rule = args.rule
+        self.dataset_name = args.dataset
+        self.dataset = datasets.load_dataset(args.dataset, split="train")
+        self.input_key = args.input_key
+        self.gt_key = args.gt_key
+        self.binary = args.binary
+        self.n_workers = args.n_workers
+        self.step_idx = int(args.start_step_idx) if args.start_step_idx is not None else 0
+        if self.step_idx != 0:
+            print(f"Starting from step {self.step_idx}")
+        self.last_request_time = None
+        self.record_dir = args.record_dir if args.record_dir is not None else "./rm_records"
+        assert self.rule in ["test_case", "exact_match", "code_format_reward"]
+        if self.rule == "test_case":
+            try:
+                from acecoder import evaluate_test_cases
+            except ImportError:
+                raise ImportError("`from acecoder import evaluate_test_cases` failed, please install acecoder to use test_case rule")
+
+        dataset_questions = []
+        for conversation in self.dataset['context_messages']:
+            idx = 0
+            while conversation[idx]['role'] != "user":
+                idx += 1
+            dataset_questions.append(conversation[idx]['content'])
+        dataset_questions = [self.policy_tokenizer.decode(self.policy_tokenizer.encode(x)) for x in tqdm(dataset_questions, desc="Tokenizing dataset questions")]
+        self.hash_map = {
+            hash_string(q): item for q, item in zip(dataset_questions, self.dataset)
+        }
+        
+    
+    async def get_reward_async(self, queries: List[str], prompts: List[str]) -> List[float]:
+        # If get_reward is CPU-bound, run it in a thread pool
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            thread_pool, 
+            self.get_reward,
+            queries,
+            prompts
+        )
+            
+    def get_reward(self, queries, prompts):
+        if self.batch_size is None:
+            batch_size = len(queries)
+        else:
+            batch_size = self.batch_size
+            
+        # now, the current queries applied to the chat template of the policy model, we need to recover the original queries into a list of conversations
+        conversations = []
+        for query in queries:
+            conversation = self.parse_conv_fn(query)
+            conversations.append(conversation)
+        
+        scores = []
+        if self.rule == "test_case":
+            from acecoder import evaluate_test_cases
+            questions = []
+            responses = []
+            for conversation in conversations:
+                idx = 0
+                while conversation[idx]['role'] != "user":
+                    idx += 1
+                questions.append(conversation[idx]['content'])
+                try:
+                    responses.append(conversation[idx + 1]['content'])
+                except:
+                    responses.append("")
+            question_hashes = [hash_string(question) for question in questions]
+            if not all([x in self.hash_map for x in question_hashes]):
+                torch.save(question_hashes, "question_hashes.pt")
+                torch.save(conversations, "conversations.pt")
+                torch.save(questions, "questions.pt")
+                torch.save(responses, "responses.pt")
+                torch.save(queries, "queries.pt")
+                torch.save(self.hash_map, "hash_map.pt")
+                raise Exception("Not all questions are in the dataset")
+            assert all([x in self.hash_map for x in question_hashes]), "Not all questions are in the dataset"
+            test_cases = [self.hash_map[x][self.gt_key] for x in question_hashes]
+            
+            extracted_answers = [re.sub(r"<think>(.|\n)*?</think>", "", response) for response in responses]
+            # extracted_answers = [re.search(r"<answer>(.|\n)*?</answer>", response) for response in responses]
+            # extracted_answers = [x.group() if x is not None else "" for x in extracted_answers]
+            # # ```.*\n(.|\n)*?\n``` is the regex for code block
+            # extracted_answers = [re.findall(r"```.*\n(.|\n)*?\n```", answer) if answer is not None else [] for answer in extracted_answers]
+            # extracted_answers = [x[0] if len(x) > 0 else "" for x in extracted_answers]
+            
+            samples = [
+                {
+                    'task_id': question_hash,
+                    'prompt': question,
+                    'output': answer,
+                    'original_response': response,
+                    'tests': test_case,
+                    '_identifier': f"{question_hash}_{i}"
+                }
+                for i, (question_hash, question, answer, test_case, response) in enumerate(zip(question_hashes, questions, extracted_answers, test_cases, responses))
+            ]
+            ## save samples to a file
+            temp_dir = self.record_dir + "/"
+            temp_file = temp_dir + f"step-{self.step_idx}_{hash_string(''.join(queries))}.jsonl"
+            if self.last_request_time is not None:
+                # increase step if the last request is 180 seconds ago
+                if time.time() - self.last_request_time > 180:
+                    self.step_idx += 1
+            self.last_request_time = time.time()
+            os.makedirs(temp_dir, exist_ok=True)
+            with open(temp_file, "w") as f:
+                for sample in samples:
+                    f.write(json.dumps(sample) + "\n")
+            # python -m openrlhf.cli.eval_test_cases --samples temp_file --n_workers 8 --test_details --output_file output_file
+            # python -m openrlhf.cli.eval_test_cases --samples /root/dongfu/OpenRLHF/temp/a9f6894d094547fb67e2aad4026c4b7c8a8b5889ae79b25ef59c7ef7372cdde3.jsonl --n_workers 8 --test_details --output_file /root/dongfu/OpenRLHF/temp/a9f6894d094547fb67e2aad4026c4b7c8a8b5889ae79b25ef59c7ef7372cdde3.eval_results.jsonl
+            output_file = Path(temp_file).with_suffix(f".eval_results{'_binary' if self.binary else ''}.jsonl").absolute()
+            command = f"python -m acecoder.eval_test_cases --samples {temp_file} --n_workers {self.n_workers} \
+                --extract_solution True --output_file {output_file} --test_details {not self.binary} \
+                --i_just_wanna_run True"
+            print(command)
+            subprocess.run(command, shell=True)
+            with open(output_file, "r") as f:
+                all_samples_results = [json.loads(x) for x in f]
+            pass_rates = [x['eval_results']['pass_rate'] for x in all_samples_results]
+            
+            # remove temp_file
+            try:
+                os.remove(temp_file)
+            except:
+                pass
+            try:
+                os.remove(output_file)
+            except:
+                pass
+            # save random 100 samples into a file for debugging
+            for i, sample_result in enumerate(all_samples_results):
+                sample_result['original_response'] = samples[i]['original_response']
+                sample_result['question'] = samples[i]['prompt']
+                sample_result['id'] = self.hash_map[samples[i]['task_id']]['id']
+            num_samples = min(100, len(all_samples_results))
+            sampled_results = random.sample(all_samples_results, num_samples)
+            sampled_output_file = Path(temp_file).with_suffix(f".{num_samples}_samples.json").absolute()
+            with open(sampled_output_file, "w") as f:
+                json.dump(sampled_results, f, indent=4)
+            # save samples to a file
+            # all_samples_results, pass_rates = evaluate_test_cases(samples, n_workers=self.n_workers, test_details=not self.binary, min_time_limit=1, gt_time_limit_factor=1)
+            scores = pass_rates
+            print(f"Pass all test cases rate: {np.mean([x == 1 for x in scores]) * 100:.2f}%")
+            if self.binary:
+                scores = [1 if x == 1 else 0 for x in scores] # if binary x in scores]
+            scores = [x + 0.5 if x == 1 else x for x in scores] # additional reward for passing all test cases
+        elif self.rule == "code_format_reward":
+            questions = []
+            responses = []
+            for conversation in conversations:
+                idx = 0
+                while conversation[idx]['role'] != "user":
+                    idx += 1
+                questions.append(conversation[idx]['content'])
+                try:
+                    responses.append(conversation[idx + 1]['content'])
+                except:
+                    responses.append("")
+            question_hashes = [hash_string(question) for question in questions]
+            
+            
+            
+            # Format Reward 1: force <think> ... </think> <answer> ... </answer> format
+            # scores_1 = [int(re.match(r"<think>(.|\n)*?</think>\s*<answer>(.|\n)*?</answer>", response.strip(' \n')) is not None) for response in responses]
+            scores_1 = [int(re.search(r"^<think>(.|\n)*?</think>", response.strip(' \n')) is not None) for response in responses]
+            
+            # # Format Reward 2: encourage the include of coding in the thinking process
+            # extracted_thinks = [re.search(r"<think>(.|\n)*?</think>", response) for response in responses]
+            # extracted_thinks = [x.group() if x is not None else None for x in extracted_thinks]
+            # scores_2 = [re.findall(r"```.*\n(.|\n)*?\n```", think) if think is not None else [] for think in extracted_thinks]
+            # scores_2 = [len(x) for x in scores_2]
+            # scores_2 = [np.tanh(x) for x in scores_2]
+            
+            # Combine the scores    
+            scores = [x * 0.5 for x in scores_1]
+            print("Average scores_1: ", np.mean(scores_1))
+            # print("Average scores_2: ", np.mean(scores_2))
+            print("Average weighted scores: ", np.mean(scores))
+            
+        elif self.rule == "exact_match":
+            raise NotImplementedError
+
+        return scores
+
+    def tokenize_fn(self, texts, device):
+        batch = self.tokenizer(
+            texts,
+            return_tensors="pt",
+            add_special_tokens=False,
+            max_length=self.max_length,
+            padding=True,
+            truncation=True,
+        )
+        return {k: v.to(device) for k, v in batch.items()}
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # Reward Model
     parser.add_argument("--reward_pretrain", type=str, default=None, help="HF model name or path")
+    parser.add_argument("--policy_pretrain", type=str, default=None, help="HF model name or path")
     parser.add_argument("--normalize_reward", action="store_true", default=False, help="Enable Reward Normazation")
     parser.add_argument("--value_head_prefix", type=str, default="score")
     parser.add_argument("--max_len", type=int, default="2048")
+    parser.add_argument("--rule", type=str, default="reward_model", help="Rule-based reward model")
+    parser.add_argument("--dataset", type=str, default="test", help="Dataset for the rule-based reward model")
+    parser.add_argument("--input_key", type=str, default="context_messages", help="Key for the input")
+    parser.add_argument("--gt_key", type=str, default="tests", help="Key used for rule-based reward model that compares with the output to get the reward")
+    parser.add_argument("--binary", action="store_true", default=False, help="Binary reward")
+    parser.add_argument("--n_workers", type=int, default=8, help="Number of workers for the rule-based reward model")
+    parser.add_argument("--record_dir", type=str, default=None, help="Directory to save the records")
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--start_step_idx", type=int, default=0)
 
     parser.add_argument("--port", type=int, default=5000, help="Port number for the server")
     parser.add_argument("--host", type=str, default="0.0.0.0", help="IP for the server")
@@ -112,8 +397,13 @@ if __name__ == "__main__":
         # Patch hub to download models from modelscope to speed up.
         patch_hub()
 
+    np.random.seed(args.seed)
+    random.seed(args.seed)
     # server
-    reward_model = RewardModelProxy(args)
+    if args.rule == "reward_model":
+        reward_model = RewardModelProxy(args)
+    else:
+        reward_model = RuleBasedRewardModelProxy(args)
     app = FastAPI()
 
     @app.post("/get_reward")
@@ -121,7 +411,11 @@ if __name__ == "__main__":
         data = await request.json()
         queries = data.get("query")
         prompts = data.get("prompts")
-        rewards = reward_model.get_reward(queries, prompts)
+        if args.rule == "reward_model":
+            rewards = reward_model.get_reward(queries, prompts)
+        else:
+            print(f"Computing rewards for {len(queries)} queries")
+            rewards = await reward_model.get_reward_async(queries, prompts)
         result = {"rewards": rewards}
         logger.info(f"Sent JSON: {result}")
         return JSONResponse(result)
