@@ -4,8 +4,8 @@ working_dir=$PWD
 # reinforce++
 
 # policy_pretrain="Qwen/Qwen2.5-Coder-7B-Instruct"
-policy_pretrain="CodeDPO/qwen2.5-coder-inst-cold-start-R1"
-# policy_pretrain="Qwen/Qwen2.5-7B-Instruct"
+# policy_pretrain="CodeDPO/qwen2.5-coder-inst-cold-start-R1"
+policy_pretrain="Qwen/Qwen2.5-3B"
 # dataset="CodeDPO/codedpo_20241208_openrlhf_format_hard" # old dataset where test cases are not filterd by Qwen2.5-Coder-32B
 dataset="CodeDPO/AceCoderV2-mini-processed_openrlhf_format_r1" # new dataset where test cases are filterd by Qwen2.5-Coder-32B
 rm_port=14236
@@ -15,8 +15,8 @@ reward_log_file="logs/reward.log"
 rm_format_port=14237
 remote_rm_format_url="rule:http://localhost:$rm_format_port/get_reward"
 reward_format_log_file="logs/reward_format.log"
-# save_name="qwen25-ins-7b-coderm-7b-reinforce++"
-save_name="qwen25-coder-inst-7b-${advantage_estimator}-v2_mini_processed_r1"
+model_pretty_name=$(echo $policy_pretrain | tr '/' '_' | tr '[:upper:]' '[:lower:]')
+save_name="${model_pretty_name}-${advantage_estimator}-v2_mini"
 mkdir -p logs
 record_dir="rm_records/$save_name"
 mkdir -p $record_dirs
@@ -106,7 +106,7 @@ ray job submit --address="http://127.0.0.1:8265" \
    --actor_learning_rate 1e-6 \
    --init_kl_coef 0 \
    --lambd 1.0 \
-   --gemma 1.0 \
+   --gamma 1.0 \
    --temperature 0.6 \
    --prompt_data $dataset \
    --input_key context_messages \
