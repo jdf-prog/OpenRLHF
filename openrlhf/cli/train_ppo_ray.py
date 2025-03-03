@@ -65,10 +65,10 @@ def train(args):
     if args.vllm_num_engines is not None and args.vllm_num_engines > 0:
         max_len = args.max_len if args.max_len else args.prompt_max_len + args.generate_max_len
         if args.colocate_all_models and args.vllm_gpu_memory_utilization >= 0.9:
-            args.vllm_gpu_memory_utilization = 0.4
-            print(
-                f"Set args.vllm_gpu_memory_utilization to {args.vllm_gpu_memory_utilization} for colocate_all_models!"
-            )
+            # args.vllm_gpu_memory_utilization = 0.4
+            # print(
+            #     f"Set args.vllm_gpu_memory_utilization to {args.vllm_gpu_memory_utilization} for colocate_all_models!"
+            # )
 
             assert (
                 args.actor_num_nodes * args.actor_num_gpus_per_node
