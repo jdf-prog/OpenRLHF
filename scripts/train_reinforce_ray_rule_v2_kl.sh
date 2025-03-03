@@ -10,7 +10,7 @@ policy_pretrain="Qwen/Qwen2.5-Coder-7B"
 # dataset="CodeDPO/codedpo_20241208_openrlhf_format_hard" # old dataset where test cases are not filterd by Qwen2.5-Coder-32B
 dataset="CodeDPO/AceCoderV2-mini-processed_openrlhf_format_r1" # new dataset where test cases are filterd by Qwen2.5-Coder-32B
 # save_name="qwen25-ins-7b-coderm-7b-reinforce++"
-save_name="qwen25-coder-base-7b--reinforce++_v2_mini_processed_r1"
+save_name="qwen25-coder-base-7b--reinforce++_v2_mini_processed_r1_grpo_kl"
 record_dir="rm_records/$save_name"
 log_dir="logs/$save_name" 
 
@@ -119,6 +119,7 @@ ray job submit --address="http://127.0.0.1:8265" \
    --flash_attn \
    --use_wandb $WANDB_API_KEY \
    --wandb_run_name $save_name \
+   --use_kl_loss \
    $training_post_args
 
 

@@ -25,7 +25,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 app = FastAPI()
 # Create a thread pool for CPU-bound operations
-thread_pool = ThreadPoolExecutor(max_workers=4)
+thread_pool = ThreadPoolExecutor(max_workers=8)
 # thread_pool = ProcessPoolExecutor(max_workers=2)
 
 logger = init_logger(__name__)
@@ -372,7 +372,7 @@ if __name__ == "__main__":
     parser.add_argument("--input_key", type=str, default="context_messages", help="Key for the input")
     parser.add_argument("--gt_key", type=str, default="tests", help="Key used for rule-based reward model that compares with the output to get the reward")
     parser.add_argument("--binary", action="store_true", default=False, help="Binary reward")
-    parser.add_argument("--n_workers", type=int, default=8, help="Number of workers for the rule-based reward model")
+    parser.add_argument("--n_workers", type=int, default=4, help="Number of workers for the rule-based reward model")
     parser.add_argument("--record_dir", type=str, default=None, help="Directory to save the records")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--start_step_idx", type=int, default=0)
