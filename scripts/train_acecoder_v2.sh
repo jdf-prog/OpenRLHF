@@ -1,14 +1,49 @@
-set -x
-ray start --head --num-gpus 8 --num-cpus 64 --node-ip-address 0.0.0.0
-working_dir=$PWD
+#!/bin/bash
 
+# Configuration for Ray multinode setup
+# This script determines if the current node is the master node
+# and starts Ray with the appropriate configuration
+set -x
+if [ -z $MASTER_ADDR ]; then
+    echo "MASTER_ADDR is empty"
+    export MASTER_ADDR=$(hostname -I | awk '{print $1}')
+fi
+if [ -z $MASTER_PORT ]; then
+    echo "MASTER_PORT is empty"
+    export MASTER_PORT=6379
+fi
+if [ -z $RANK ]; then
+    echo "RANK is empty"
+    export RANK=0
+fi
+# Get current node's IP address
+MASTER_IP=$(getent ahosts $MASTER_ADDR | awk 'NR==1 { print $1 }')
+CURRENT_IP=$(hostname -I | awk '{print $1}')
+echo "MASTER_ADDR: $MASTER_ADDR"
+echo "MASTER_IP: $MASTER_IP"
+echo "MASTER_PORT: $MASTER_PORT"
+echo "RANK: $RANK"
+echo "CURRENT_IP: $CURRENT_IP"
+
+# Check if this is the master node
+if [ "$CURRENT_IP" = "$MASTER_IP" ]; then
+    echo "Starting Ray as head node..."
+    ray start --head --node-ip-address ${MASTER_IP} --port ${MASTER_PORT} --block
+else
+    echo "Starting Ray as worker node, connecting to master at ${MASTER_IP}..."
+    ray start --address ${MASTER_IP}:${MASTER_PORT} --block
+fi
+
+echo "Ray started successfully."
+
+working_dir=$PWD
 policy_pretrain="Qwen/Qwen2.5-3B"
 dataset="CodeDPO/AceCoderV2-mini-processed_openrlhf_format_r1" # new dataset where test cases are filterd by Qwen2.5-Coder-32B
 advantage_estimator="group_norm" # group_norm
 model_pretty_name=$(echo $policy_pretrain | tr '/' '_' | tr '[:upper:]' '[:lower:]')
 save_name="${model_pretty_name}-${advantage_estimator}-v2_mini"
 record_dir="rm_records/$save_name"
-log_dir="logs/$save_name" 
+log_dir="logs/$save_name/rank${RANK}"
 
 rm_port=14236
 remote_rm_url="rule:http://localhost:$rm_port/get_reward"
@@ -77,12 +112,12 @@ ray job submit --address="http://127.0.0.1:8265" \
    --runtime-env-json='{"working_dir": "'$working_dir'", "excludes": ["saves", "rm_records", "logs"]}' \
    -- python3 -m openrlhf.cli.train_ppo_ray \
    --ref_num_nodes 1 \
-   --ref_num_gpus_per_node 4 \
+   --ref_num_gpus_per_node 8 \
    --reward_num_nodes 0 \
    --reward_num_gpus_per_node 0 \
    --actor_num_nodes 1 \
-   --actor_num_gpus_per_node 4 \
-   --vllm_num_engines 2 \
+   --actor_num_gpus_per_node 8 \
+   --vllm_num_engines 4 \
    --vllm_tensor_parallel_size 2 \
    --pretrain $policy_pretrain \
    --remote_rm_url $all_remote_rm_urls \
@@ -91,13 +126,13 @@ ray job submit --address="http://127.0.0.1:8265" \
    --micro_train_batch_size 2 \
    --train_batch_size 128 \
    --micro_rollout_batch_size 2 \
-   --rollout_batch_size 64 \
-   --n_samples_per_prompt 16 \
+   --rollout_batch_size 128 \
+   --n_samples_per_prompt 8 \
    --max_epochs 1 \
    --prompt_max_len 2048 \
    --max_samples 1000000 \
    --generate_max_len 4096 \
-   --num_episodes 2 \
+   --num_episodes 1 \
    --advantage_estimator $advantage_estimator \
    --zero_stage 2 \
    --bf16 \
@@ -110,8 +145,8 @@ ray job submit --address="http://127.0.0.1:8265" \
    --apply_chat_template \
    --adam_offload \
    --gradient_checkpointing \
-   --ring_attn_size 2 \
-   --ring_head_stride 2 \
+   --ring_attn_size 1 \
+   --ring_head_stride 1 \
    --packing_samples \
    --save_steps 5 \
    --ckpt_path $working_dir/saves/ckpt/$save_name \
