@@ -25,17 +25,6 @@ echo "MASTER_PORT: $MASTER_PORT"
 echo "RANK: $RANK"
 echo "CURRENT_IP: $CURRENT_IP"
 
-# Check if this is the master node
-if [ "$CURRENT_IP" = "$MASTER_IP" ]; then
-    echo "Starting Ray as head node..."
-    ray start --head --node-ip-address ${MASTER_IP} --port ${MASTER_PORT} --block
-else
-    echo "Starting Ray as worker node, connecting to master at ${MASTER_IP}..."
-    ray start --address ${MASTER_IP}:${MASTER_PORT} --block
-fi
-
-echo "Ray started successfully."
-
 working_dir=$PWD
 policy_pretrain="Qwen/Qwen2.5-3B"
 dataset="CodeDPO/AceCoderV2-mini-processed_openrlhf_format_r1" # new dataset where test cases are filterd by Qwen2.5-Coder-32B
@@ -106,55 +95,59 @@ python -m openrlhf.cli.serve_rm \
    $post_args > $reward_format_log_file 2>&1 &
 PID_RM2=$!
 
-# echo "start training"
-# echo "see logs/train.log for training logs"
-ray job submit --address="http://127.0.0.1:8265" \
-   --runtime-env-json='{"working_dir": "'$working_dir'", "excludes": ["saves", "rm_records", "logs"]}' \
-   -- python3 -m openrlhf.cli.train_ppo_ray \
-   --ref_num_nodes 1 \
-   --ref_num_gpus_per_node 8 \
-   --reward_num_nodes 0 \
-   --reward_num_gpus_per_node 0 \
-   --actor_num_nodes 1 \
-   --actor_num_gpus_per_node 8 \
-   --vllm_num_engines 4 \
-   --vllm_tensor_parallel_size 2 \
-   --pretrain $policy_pretrain \
-   --remote_rm_url $all_remote_rm_urls \
-   --colocate_actor_ref \
-   --save_path $save_path \
-   --micro_train_batch_size 2 \
-   --train_batch_size 128 \
-   --micro_rollout_batch_size 2 \
-   --rollout_batch_size 128 \
-   --n_samples_per_prompt 8 \
-   --max_epochs 1 \
-   --prompt_max_len 2048 \
-   --max_samples 1000000 \
-   --generate_max_len 4096 \
-   --num_episodes 1 \
-   --advantage_estimator $advantage_estimator \
-   --zero_stage 2 \
-   --bf16 \
-   --actor_learning_rate 1e-6 \
-   --init_kl_coef 0 \
-   --lambd 1.0 \
-   --gamma 1.0 \
-   --prompt_data $dataset \
-   --input_key context_messages \
-   --apply_chat_template \
-   --adam_offload \
-   --gradient_checkpointing \
-   --ring_attn_size 1 \
-   --ring_head_stride 1 \
-   --packing_samples \
-   --save_steps 5 \
-   --ckpt_path $working_dir/saves/ckpt/$save_name \
-   --flash_attn \
-   --use_wandb $WANDB_API_KEY \
-   --wandb_run_name $save_name \
-   $training_post_args
-
+if [ "$CURRENT_IP" = "$MASTER_IP" ]; then
+   echo "Starting Ray as head node..."
+   ray start --head --node-ip-address ${MASTER_IP} --port ${MASTER_PORT}
+   ray job submit --address="http://127.0.0.1:8265" \
+      --runtime-env-json='{"working_dir": "'$working_dir'", "excludes": ["saves", "rm_records", "logs", "checkpoint"]}' \
+      -- python3 -m openrlhf.cli.train_ppo_ray \
+      --ref_num_nodes 1 \
+      --ref_num_gpus_per_node 8 \
+      --reward_num_nodes 0 \
+      --reward_num_gpus_per_node 0 \
+      --actor_num_nodes 1 \
+      --actor_num_gpus_per_node 8 \
+      --vllm_num_engines 4 \
+      --vllm_tensor_parallel_size 2 \
+      --pretrain $policy_pretrain \
+      --remote_rm_url $all_remote_rm_urls \
+      --colocate_actor_ref \
+      --save_path $save_path \
+      --micro_train_batch_size 2 \
+      --train_batch_size 128 \
+      --micro_rollout_batch_size 2 \
+      --rollout_batch_size 128 \
+      --n_samples_per_prompt 8 \
+      --max_epochs 1 \
+      --prompt_max_len 2048 \
+      --max_samples 1000000 \
+      --generate_max_len 4096 \
+      --num_episodes 1 \
+      --advantage_estimator $advantage_estimator \
+      --zero_stage 2 \
+      --bf16 \
+      --actor_learning_rate 1e-6 \
+      --init_kl_coef 0 \
+      --lambd 1.0 \
+      --gamma 1.0 \
+      --prompt_data $dataset \
+      --input_key context_messages \
+      --apply_chat_template \
+      --adam_offload \
+      --gradient_checkpointing \
+      --ring_attn_size 1 \
+      --ring_head_stride 1 \
+      --packing_samples \
+      --save_steps 5 \
+      --ckpt_path $working_dir/saves/ckpt/$save_name \
+      --flash_attn \
+      --use_wandb $WANDB_API_KEY \
+      --wandb_run_name $save_name \
+      $training_post_args
+else
+   echo "Starting Ray as worker node, connecting to master at ${MASTER_IP}..."
+   ray start --address ${MASTER_IP}:${MASTER_PORT} --block
+fi
 
 # --colocate_actor_ref \
 # --colocate_all_models \
